@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Link tree stats</title><link rel="stylesheet" href="style.css">
+<style>main{max-width:520px;margin:2rem auto;padding:0 1.2rem}table{width:100%;border-collapse:collapse}td{padding:.6rem .4rem;border-bottom:1px solid #2c2633}td:last-child{text-align:right;font-weight:800;color:#e4c068}button{margin-top:1rem;padding:.6rem 1rem;border-radius:999px;border:0;background:#8a5cf6;color:#fff;font-weight:700}small{color:#a9a3b3}</style></head>
+<body><main><h1>Link tree stats</h1><small>All-time counts. No cookies, no personal data.</small>
+<table id="t"></table>
+<button id="me">Don't count my own visits on this device</button> <small id="ms"></small>
+</main><script>
+var B='https://abacus.jasoncameron.dev/get/beskartooth-links/';
+var rows=[['page-views','👀 Page views'],['click-commissions','🎨 Commissions clicks'],['click-etsy','🛍️ Etsy clicks'],['click-cookie-game','🍪 Cookie game clicks'],['click-besky-timer','⏰ Besky Timer clicks'],['click-x','𝕏 X clicks'],['click-tiktok','🎵 TikTok clicks']];
+var t=document.getElementById('t');
+rows.forEach(function(r){var tr=document.createElement('tr');tr.innerHTML='<td>'+r[1]+'</td><td>…</td>';t.appendChild(tr);
+fetch(B+r[0]).then(function(x){return x.ok?x.json():{value:0}}).then(function(j){tr.lastChild.textContent=j.value||0}).catch(function(){tr.lastChild.textContent='0'});});
+var me=document.getElementById('me'),ms=document.getElementById('ms');
+function upd(){ms.textContent=localStorage.getItem('besky-notrack')?'Your visits here are not counted.':'';me.textContent=localStorage.getItem('besky-notrack')?'Count my visits again':"Don't count my own visits on this device";}
+me.onclick=function(){if(localStorage.getItem('besky-notrack'))localStorage.removeItem('besky-notrack');else localStorage.setItem('besky-notrack','1');upd();};upd();
+</script></body></html>
