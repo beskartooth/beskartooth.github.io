@@ -18,6 +18,7 @@
   };
 
   var LAYOUTS = [
+    { id: "blank", name: "Blank", hint: "One full panel" },
     { id: "six", name: "Six-panel", hint: "2 × 3 grid" },
     { id: "tiers", name: "Three tiers", hint: "Horizontal bands" },
     { id: "four", name: "Four-panel", hint: "2 × 2 grid" },
@@ -192,8 +193,50 @@
           edgeCuts: [null, null, null, null],
           image: null
         }],
-        letters: []
+        letters: [],
+        bank: []
       };
+    }
+
+    function fullPanel() {
+      var page = state.doc.page;
+      var rect = G.rectPanel(page.width, page.height);
+      return {
+        id: uid("p"),
+        points: rect.points,
+        edgeCuts: rect.edgeCuts.slice(),
+        image: null
+      };
+    }
+
+    function bankName(name) {
+      var text = String(name || "Image").replace(/[\r\n]/g, " ").trim();
+      return (text || "Image").slice(0, 120);
+    }
+
+    function storeBankItem(info) {
+      var id = uid("i");
+      state.images.set(id, info.dataUrl);
+      var item = {
+        id: id,
+        name: bankName(info.name),
+        width: Math.max(1, Number(info.width) || 1),
+        height: Math.max(1, Number(info.height) || 1)
+      };
+      if (!state.doc.bank) state.doc.bank = [];
+      state.doc.bank.push(item);
+      return item;
+    }
+
+    function commitMutation(mutate) {
+      end();
+      var before = JSON.stringify(state.doc);
+      var snap = structuredClone(state.doc);
+      mutate();
+      if (JSON.stringify(state.doc) === before) return false;
+      pushSnapshot(snap);
+      gc();
+      return true;
     }
 
     function gc() {
@@ -202,6 +245,7 @@
       if (state.draft) docs.push(state.draft);
       docs.forEach(function (d) {
         d.panels.forEach(function (p) { if (p.image) used.add(p.image.id); });
+        (d.bank || []).forEach(function (item) { if (item && item.id) used.add(item.id); });
       });
       Array.from(state.images.keys()).forEach(function (id) {
         if (!used.has(id)) state.images.delete(id);
@@ -251,6 +295,7 @@
     }
 
     blank();
+    state.clean = JSON.stringify(state.doc);
 
     return {
       get doc() { return state.doc; },
@@ -276,6 +321,46 @@
         gc();
         return true;
       },
+      isDirty: function () { return JSON.stringify(state.doc) !== state.clean; },
+      markClean: function () { state.clean = JSON.stringify(state.doc); },
+      bankSnapshot: function () {
+        return (state.doc.bank || []).map(function (item) {
+          var dataUrl = state.images.get(item.id) || "";
+          return {
+            id: item.id,
+            name: item.name,
+            width: item.width,
+            height: item.height,
+            dataUrl: dataUrl
+          };
+        }).filter(function (item) { return item.dataUrl.indexOf("data:image/") === 0; });
+      },
+      replaceBank: function (items) {
+        var bank = [];
+        (items || []).forEach(function (item) {
+          if (!item || typeof item.dataUrl !== "string" || item.dataUrl.indexOf("data:image/") !== 0) return;
+          var id = String(item.id || uid("i"));
+          noteId(id);
+          state.images.set(id, item.dataUrl);
+          bank.push({
+            id: id,
+            name: bankName(item.name),
+            width: Math.max(1, Number(item.width) || 1),
+            height: Math.max(1, Number(item.height) || 1)
+          });
+        });
+        state.doc.bank = bank;
+        gc();
+      },
+      newPage: function (opts) {
+        var keep = !opts || opts.keepBank !== false;
+        return commitMutation(function () {
+          var bank = keep ? (state.doc.bank || []).slice() : [];
+          state.doc.panels = [fullPanel()];
+          state.doc.letters = [];
+          state.doc.bank = bank;
+        });
+      },
       patchPage: function (partial) {
         if (partial.background && isHex(partial.background)) state.doc.page.background = partial.background;
         if (partial.gutter != null && isFinite(partial.gutter)) {
@@ -299,6 +384,11 @@
         return true;
       },
       applyLayout: function (id) {
+        if (id === "blank") {
+          return commitMutation(function () {
+            state.doc.panels = [fullPanel()];
+          });
+        }
         var cuts = layoutCuts(id, state.doc.page.width, state.doc.page.height);
         if (!cuts.length) return false;
         checkpoint();
@@ -356,17 +446,52 @@
       setImage: function (panelId, info) {
         var panel = panelById(panelId);
         if (!panel || !info || !info.dataUrl) return false;
-        var id = uid("i");
-        state.images.set(id, info.dataUrl);
-        var fitted = coverFit(panel, state.doc.page, {
-          id: id,
-          width: info.width,
-          height: info.height
+        return commitMutation(function () {
+          var item = storeBankItem(info);
+          var current = panelById(panelId);
+          if (!current) return;
+          current.image = coverFit(current, state.doc.page, {
+            id: item.id,
+            width: item.width,
+            height: item.height
+          });
         });
-        checkpoint();
-        panel.image = fitted;
-        gc();
-        return true;
+      },
+      addBankItems: function (infos) {
+        var list = (infos || []).filter(function (info) { return info && typeof info.dataUrl === "string"; });
+        if (!list.length) return [];
+        var ids = [];
+        commitMutation(function () {
+          list.forEach(function (info) { ids.push(storeBankItem(info).id); });
+        });
+        return ids;
+      },
+      placeBankImage: function (panelId, bankId) {
+        var panel = panelById(panelId);
+        var item = (state.doc.bank || []).find(function (entry) { return entry.id === bankId; }) || null;
+        if (!panel || !item || !state.images.has(item.id)) return false;
+        return commitMutation(function () {
+          var current = panelById(panelId);
+          if (!current) return;
+          current.image = coverFit(current, state.doc.page, {
+            id: item.id,
+            width: item.width,
+            height: item.height
+          });
+        });
+      },
+      removeBankItem: function (bankId) {
+        var idx = (state.doc.bank || []).findIndex(function (entry) { return entry.id === bankId; });
+        if (idx < 0) return false;
+        return commitMutation(function () {
+          state.doc.bank.splice(idx, 1);
+        });
+      },
+      clearBank: function () {
+        if (!state.doc.bank || !state.doc.bank.length) return false;
+        return commitMutation(function () {
+          state.doc.bank = [];
+        });
       },
       panImage: function (panelId, dx, dy) {
         var panel = panelById(panelId);
@@ -491,7 +616,18 @@
             }
             return { id: p.id, points: p.points, edgeCuts: p.edgeCuts, image: image };
           }),
-          letters: structuredClone(state.doc.letters)
+          letters: structuredClone(state.doc.letters),
+          bank: (state.doc.bank || []).map(function (item) {
+            var dataUrl = state.images.get(item.id);
+            if (!dataUrl) return null;
+            return {
+              id: item.id,
+              name: item.name,
+              width: item.width,
+              height: item.height,
+              dataUrl: dataUrl
+            };
+          }).filter(Boolean)
         };
       },
       loadJSON: function (raw) {
@@ -572,12 +708,28 @@
             }
           },
           panels: panels,
-          letters: letters
+          letters: letters,
+          bank: []
         };
+        if (Array.isArray(data.bank)) {
+          data.bank.forEach(function (item) {
+            if (!item || typeof item.dataUrl !== "string" || item.dataUrl.indexOf("data:image/") !== 0) return;
+            var id = String(item.id || uid("i"));
+            noteId(id);
+            if (!images.has(id)) images.set(id, item.dataUrl);
+            doc.bank.push({
+              id: id,
+              name: bankName(item.name),
+              width: Math.max(1, Number(item.width) || 1),
+              height: Math.max(1, Number(item.height) || 1)
+            });
+          });
+        }
         checkpoint();
         images.forEach(function (url, id) { state.images.set(id, url); });
         state.doc = doc;
         gc();
+        state.clean = JSON.stringify(state.doc);
       }
     };
   }

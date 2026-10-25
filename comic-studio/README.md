@@ -11,7 +11,8 @@ It is linked from the [Besky Art link tree](https://beskartooth.github.io/) as �
 Comic Studio is 100% client-side.
 
 - Images are read from your computer with the browser file picker or drag-and-drop. They are never uploaded.
-- Saving a project writes one `.json` file onto your device. Images are embedded in that file. Nothing is sent anywhere.
+- Saving a project writes one `.json` file onto your device. Images are embedded in that file, including the image bank. Nothing is sent anywhere.
+- The image bank is also kept in this browser with IndexedDB so a reload does not clear it. That storage never leaves the device.
 - PNG and JPG export downloads a picture of the page. The file stays on your device.
 - There are no analytics, no accounts, no remote fonts, and no third-party scripts. The fonts in `fonts/` are files in this folder.
 
@@ -21,11 +22,18 @@ The page sets a Content Security Policy that blocks network requests.
 
 1. Pick a page size (standard comic, webtoon strip, square, 16:9, 9:16, or custom pixels). The standard comic preset is a 6.625×10.25 page at 1325×2050 px.
 2. Set the page background, gutter width, and the optional panel border (on by default, thin and black).
-3. Choose a layout or draw your own cuts.
+3. Choose a layout or draw your own cuts. Blank, the first layout, clears back to one full panel. If a panel has a picture, it asks first. Undo brings the panels back.
 4. Drop a PNG, JPG, or WebP onto a panel, or click an empty panel to choose a file. Drag to pan. Scroll, or use the zoom slider, to scale. Rotate with the handle above the picture, the rotation slider, or the degrees field. Shift snaps the handle to 15° steps. Rotate left or right by 90°, flip the picture horizontally or vertically, or reset the rotation. Reset framing puts the picture back to an upright cover fit. Replace or remove the image from the side panel.
 5. Add lettering: speech bubble, thought bubble, caption, or sound-effect text. Drag to move, drag handles to resize, double-click to edit. Sound effects can rotate. Delete removes the selection.
 6. Undo with Ctrl+Z and redo with Ctrl+Y (Ctrl+Shift+Z also redos).
-7. Save a project JSON, load it later, or export a full-resolution PNG or JPG at the page size. Export does not include selection handles or other editor chrome.
+7. New, in the top bar, starts a blank single panel at the current page size and clears lettering. If the page has unsaved changes, it asks first. If the image bank has pictures, it asks whether to keep the bank. Undo brings the previous page back.
+8. Save a project JSON, load it later, or export a full-resolution PNG or JPG at the page size. Export does not include selection handles or other editor chrome. The project file includes the image bank. A project saved before the bank existed still opens, with an empty bank.
+
+### Image bank
+
+The strip under the page holds pictures you might use. Drop several PNG, JPG, or WebP files onto it, or use Add images and select more than one. Drag a thumbnail onto a panel to place it. Taking a picture off a panel leaves the copy in the bank. A Used badge marks thumbnails that are on the page right now. The × on a thumbnail removes it from the bank only.
+
+The bank is stored in this browser with IndexedDB, so it is still there after a reload. It is also saved inside the project file. Nothing is uploaded. Clear bank removes the thumbnails from this browser; pictures already placed on the page stay until you remove them there.
 
 ### Cutting
 
@@ -33,7 +41,7 @@ The page starts as one panel. With the Cut tool, click a start point and an end 
 
 Gutters are the gap between panels along a cut. Switch to Select and click a gutter to delete that cut and merge the panels back together. If both sides had an image, the larger panel’s image is kept.
 
-Layouts (six-panel grid, three tiers, four-panel grid, splash plus two, vertical strip, slanted action) are just starter cuts. You can keep cutting them or remove gutters afterward.
+Layouts (blank, six-panel grid, three tiers, four-panel grid, splash plus two, vertical strip, slanted action) are just starter cuts, except Blank, which clears back to one panel. You can keep cutting them or remove gutters afterward.
 
 ### Shortcuts
 

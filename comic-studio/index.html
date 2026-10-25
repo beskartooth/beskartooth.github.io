@@ -23,6 +23,7 @@
       <button type="button" id="undo" title="Undo (Ctrl+Z)">Undo</button>
       <button type="button" id="redo" title="Redo (Ctrl+Y)">Redo</button>
       <span class="sep" aria-hidden="true"></span>
+      <button type="button" id="new-page" title="New blank page">New</button>
       <button type="button" id="save" title="Save project (Ctrl+S)">Save</button>
       <button type="button" id="load">Load</button>
       <span class="sep" aria-hidden="true"></span>
@@ -41,7 +42,7 @@
       <button type="button" class="tool" data-tool="sfx" aria-pressed="false">SFX <kbd>S</kbd></button>
       <h2>Layouts</h2>
       <div class="layouts" id="layouts"></div>
-      <p class="hint">Layouts are normal cuts. Click a gutter with Select to merge panels back. <kbd>Shift</kbd> snaps a cut straight.</p>
+      <p class="hint">Blank clears back to one panel. Other layouts are starter cuts you can keep cutting or merge. <kbd>Shift</kbd> snaps a cut straight.</p>
     </aside>
     <main id="stage"><canvas id="page" width="800" height="1200" aria-label="Comic page"></canvas></main>
     <aside id="props">
@@ -68,6 +69,16 @@
       <div id="sel-props"></div>
     </aside>
   </div>
+  <section id="bank" aria-label="Image bank">
+    <div class="bank-bar">
+      <button type="button" id="bank-toggle" aria-expanded="true" aria-controls="bank-tray">Image bank</button>
+      <span id="bank-count">Empty</span>
+      <span class="bank-note">Drop images here, then drag a thumbnail onto a panel.</span>
+      <button type="button" id="bank-add">Add images</button>
+      <button type="button" id="bank-clear">Clear bank</button>
+    </div>
+    <div id="bank-tray"></div>
+  </section>
   <footer id="foot">
     <span id="status" role="status"></span>
     <span id="privacy">On this device only. Images are never uploaded.</span>
@@ -76,7 +87,19 @@
 </div>
 <textarea id="editor" aria-label="Lettering text" spellcheck="false"></textarea>
 <input id="file-image" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden>
+<input id="file-bank" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple hidden>
 <input id="file-project" type="file" accept="application/json,.json" hidden>
+<div id="confirm" hidden>
+  <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-body"></p>
+    <div class="confirm-actions">
+      <button type="button" id="confirm-cancel">Cancel</button>
+      <button type="button" id="confirm-alt" hidden>Clear bank</button>
+      <button type="button" id="confirm-ok" class="primary">OK</button>
+    </div>
+  </div>
+</div>
 <script src="js/geometry.js"></script>
 <script src="js/document.js"></script>
 <script src="js/render.js"></script>

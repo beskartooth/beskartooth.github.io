@@ -274,6 +274,60 @@ function mulberry32(a) {
   assert(v.x === 10 && v.y === 50, "snap vertical");
 }
 
+// New page, blank layout, and the image bank.
+{
+  const s = Doc.createSession();
+  assert(!s.isDirty(), "fresh page is clean");
+  assert(Array.isArray(s.doc.bank) && s.doc.bank.length === 0, "bank starts empty");
+  s.setPageSize(640, 400);
+  s.applyLayout("four");
+  const kept = s.addLetter("caption", { x: 10, y: 10, w: 80, h: 40 });
+  const panelId = s.doc.panels[0].id;
+  assert(s.setImage(panelId, { dataUrl: "data:image/png;base64,bbbb", width: 20, height: 30, name: "hero.png" }), "place image");
+  assert(s.doc.bank.length === 1 && s.doc.bank[0].name === "hero.png", "place also stores the bank");
+  const bankId = s.doc.bank[0].id;
+  assert(s.doc.panels[0].image.id === bankId, "panel uses the bank id");
+  assert(s.isDirty(), "edits are unsaved");
+  s.removeImage(panelId);
+  assert(!s.doc.panels.find((p) => p.id === panelId).image, "panel image removed");
+  assert(s.images.has(bankId), "bank keeps the bytes");
+  assert(s.placeBankImage(panelId, bankId), "place from bank");
+  assert(s.doc.panels.find((p) => p.id === panelId).image.id === bankId, "same bank image placed");
+  const raw = s.toJSON();
+  assert(raw.bank && raw.bank.length === 1 && raw.bank[0].dataUrl.indexOf("data:image/") === 0, "json stores the bank");
+  const legacy = JSON.parse(JSON.stringify(raw));
+  delete legacy.bank;
+  const s2 = Doc.createSession();
+  s2.loadJSON(legacy);
+  assert(s2.doc.bank.length === 0, "older project loads with an empty bank");
+  assert(s2.doc.panels.some((p) => p.image), "older project still loads placed images");
+  const s3 = Doc.createSession();
+  s3.loadJSON(raw);
+  assert(s3.doc.bank.length === 1 && s3.doc.bank[0].name === "hero.png", "reload bank");
+  assert(s3.images.has(s3.doc.bank[0].id), "reload bank bytes");
+  assert(s.applyLayout("blank"), "blank layout");
+  assert(s.doc.panels.length === 1 && !s.doc.panels[0].image, "blank is one empty panel");
+  assert(s.doc.letters.length === 1, "blank keeps lettering");
+  assert(s.doc.bank.length === 1, "blank keeps the bank");
+  assert(s.doc.page.width === 640 && s.doc.page.height === 400, "blank keeps page size");
+  assert(s.undo(), "undo blank");
+  assert(s.doc.panels.length === 4, "undo blank restores panels");
+  assert(s.newPage({ keepBank: true }), "new page");
+  assert(s.doc.panels.length === 1 && !s.doc.panels[0].image && s.doc.letters.length === 0, "new page is blank");
+  assert(s.doc.page.width === 640 && s.doc.page.height === 400, "new page keeps size");
+  assert(s.doc.bank.length === 1, "new page can keep the bank");
+  s.markClean();
+  assert(!s.isDirty(), "new page is clean");
+  assert(s.undo(), "undo new page");
+  assert(s.doc.panels.length === 4 && s.doc.letters.some((l) => l.id === kept.id), "undo new restores the page");
+  assert(s.isDirty(), "restored page is unsaved again");
+  s.redo();
+  assert(s.newPage({ keepBank: false }), "new page clearing bank");
+  assert(s.doc.bank.length === 0, "bank cleared");
+  assert(s.undo(), "undo clear bank");
+  assert(s.doc.bank.length === 1 && s.images.has(bankId), "undo restores bank bytes");
+}
+
 if (failed) {
   console.error(failed + " assertion(s) failed");
   process.exit(1);
