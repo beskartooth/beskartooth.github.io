@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Comic Studio is a free comic page maker that runs entirely in your browser. Images stay on your device.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Comic Studio</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/studio.css">
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <strong>Comic Studio</strong>
+        <em>beta</em>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button type="button" id="undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button type="button" id="redo" title="Redo (Ctrl+Y)">Redo</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" id="save" title="Save project (Ctrl+S)">Save</button>
+      <button type="button" id="load">Load</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" id="export-png" class="primary">Export PNG</button>
+      <button type="button" id="export-jpg">Export JPG</button>
+    </div>
+  </header>
+  <div id="workspace">
+    <aside id="tools">
+      <h2>Tools</h2>
+      <button type="button" class="tool" data-tool="select" aria-pressed="true">Select <kbd>V</kbd></button>
+      <button type="button" class="tool" data-tool="cut" aria-pressed="false">Cut <kbd>C</kbd></button>
+      <button type="button" class="tool" data-tool="bubble" aria-pressed="false">Bubble <kbd>B</kbd></button>
+      <button type="button" class="tool" data-tool="thought" aria-pressed="false">Thought <kbd>T</kbd></button>
+      <button type="button" class="tool" data-tool="caption" aria-pressed="false">Caption <kbd>K</kbd></button>
+      <button type="button" class="tool" data-tool="sfx" aria-pressed="false">SFX <kbd>S</kbd></button>
+      <h2>Layouts</h2>
+      <div class="layouts" id="layouts"></div>
+      <p class="hint">Layouts are normal cuts. Click a gutter with Select to merge panels back. <kbd>Shift</kbd> snaps a cut straight.</p>
+    </aside>
+    <main id="stage"><canvas id="page" width="800" height="1200" aria-label="Comic page"></canvas></main>
+    <aside id="props">
+      <h2>Page</h2>
+      <label>Size
+        <select id="page-preset"></select>
+      </label>
+      <div class="row">
+        <label>Width <input id="page-w" type="number" min="64" max="8192" step="1"></label>
+        <label>Height <input id="page-h" type="number" min="64" max="8192" step="1"></label>
+      </div>
+      <label>Background <input id="page-bg" type="color" value="#ffffff"></label>
+      <label>Gutter <span id="gutter-val"></span>
+        <input id="gutter" type="range" min="0" max="120" step="1">
+      </label>
+      <label class="check"><input id="border-on" type="checkbox" checked> Panel border</label>
+      <div class="row">
+        <label>Border <input id="border-color" type="color" value="#111111"></label>
+        <label>Thickness <span id="border-val"></span>
+          <input id="border-width" type="range" min="0" max="40" step="1">
+        </label>
+      </div>
+      <h2>Selection</h2>
+      <div id="sel-props"></div>
+    </aside>
+  </div>
+  <footer id="foot">
+    <span id="status" role="status"></span>
+    <span id="privacy">On this device only. Images are never uploaded.</span>
+    <span id="meta"></span>
+  </footer>
+</div>
+<textarea id="editor" aria-label="Lettering text" spellcheck="false"></textarea>
+<input id="file-image" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden>
+<input id="file-project" type="file" accept="application/json,.json" hidden>
+<script src="js/geometry.js"></script>
+<script src="js/document.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
