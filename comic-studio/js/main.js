@@ -328,15 +328,17 @@
     }
   }
 
+  var ZOOM_MIN = 0.02;
+  var ZOOM_MAX = 10000;
   function scaleToSlider(scale) {
-    var min = Math.log(0.05);
-    var max = Math.log(12);
-    var t = (Math.log(clamp(scale, 0.05, 12)) - min) / (max - min);
+    var min = Math.log(ZOOM_MIN);
+    var max = Math.log(ZOOM_MAX);
+    var t = (Math.log(clamp(scale, ZOOM_MIN, ZOOM_MAX)) - min) / (max - min);
     return String(Math.round(t * 1000));
   }
   function sliderToScale(v) {
-    var min = Math.log(0.05);
-    var max = Math.log(12);
+    var min = Math.log(ZOOM_MIN);
+    var max = Math.log(ZOOM_MAX);
     return Math.exp(min + (Number(v) / 1000) * (max - min));
   }
 
@@ -730,11 +732,9 @@
       selectionAlive();
       propsKey = "";
       setStatus(removed ? "Cut removed. Panels merged back." : "That gutter is already gone.");
-    } else if (drag.kind === "panel" && !moved && e.detail !== 2) {
+    } else if (drag.kind === "panel" && !moved) {
       var panel = panelById(drag.id);
       if (panel && !panel.image) chooseImage(panel.id);
-    } else if (drag.kind === "letter" && !moved && e.detail === 2) {
-      openEditor(letterById(drag.id));
     }
     if (drag.started) session.end();
     drag = null;
@@ -842,9 +842,10 @@
 
   function readImageFile(file) {
     return file.arrayBuffer().then(function (buf) {
-      if (!sniff(buf)) throw new Error("Use a PNG, JPG, or WebP image.");
+      var type = sniff(buf);
+      if (!type) throw new Error("Use a PNG, JPG, or WebP image.");
       return new Promise(function (resolve, reject) {
-        var blob = new Blob([buf]);
+        var blob = new Blob([buf], { type: type });
         var reader = new FileReader();
         reader.onload = function () {
           var img = new Image();
@@ -1050,6 +1051,13 @@
     reader.readAsText(file);
   });
 
+  canvas.addEventListener("dblclick", function (e) {
+    if (tool !== "select" || e.button !== 0) return;
+    var letter = hitLetter(eventPoint(e));
+    if (!letter) return;
+    select({ type: "letter", id: letter.id });
+    openEditor(letter);
+  });
   canvas.addEventListener("pointerdown", onDown);
   canvas.addEventListener("pointermove", onMove);
   canvas.addEventListener("pointerup", onUp);

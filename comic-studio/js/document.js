@@ -369,7 +369,7 @@
         var panel = panelById(panelId);
         if (!panel || !panel.image) return;
         var img = panel.image;
-        var s = clamp(newScale, 0.05, 12);
+        var s = clamp(newScale, 0.02, 10000);
         var k = s / img.scale;
         if (origin && isFinite(k)) {
           img.cx = origin.x - (origin.x - img.cx) * k;
@@ -481,7 +481,7 @@
               id: iid,
               cx: Number(p.image.cx) || 0,
               cy: Number(p.image.cy) || 0,
-              scale: clamp(Number(p.image.scale) || 1, 0.05, 12),
+              scale: clamp(Number(p.image.scale) || 1, 0.02, 10000),
               width: Math.max(1, Number(p.image.width) || 1),
               height: Math.max(1, Number(p.image.height) || 1)
             };
