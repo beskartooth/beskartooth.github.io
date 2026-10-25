@@ -198,7 +198,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 input[type="color"] { width: 100%; height: 32px; padding: 0; border: 1px solid var(--line); background: transparent; border-radius: 8px; }
 .check { display: flex; align-items: center; gap: 8px; }
 .prop-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.prop-actions button { flex: 1; }
+.prop-actions button { flex: 1 1 46%; }
+label .deg { display: flex; align-items: center; gap: 4px; }
+label .deg input { width: 5.5rem; }
 
 #foot {
   display: flex;

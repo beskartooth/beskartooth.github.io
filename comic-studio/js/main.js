@@ -31,7 +31,7 @@
   var cache = new Map();
 
   var HINTS = {
-    select: "Select: drag an image to pan, scroll to zoom. Click a gutter to merge those panels. Double-click text to edit.",
+    select: "Select: drag an image to pan, scroll to zoom, drag the round handle to rotate. Click a gutter to merge panels. Double-click text to edit.",
     cut: "Cut: click the start, then the end. The line splits every panel it crosses. Hold Shift to snap horizontal or vertical.",
     bubble: "Drag to place a speech bubble. The orange handle moves the tail.",
     thought: "Drag to place a thought bubble. The orange handle moves the little circles.",
@@ -154,6 +154,14 @@
       if (Math.hypot(pt.x - knob.x, pt.y - knob.y) <= 14 * unit) return letter;
     }
     return null;
+  }
+
+  function hitImageRotate(id, pt) {
+    var panel = panelById(id);
+    if (!panel || !panel.image) return false;
+    var unit = pageUnit();
+    var knob = R.imageKnob(panel.image, unit, session.doc.page);
+    return Math.hypot(pt.x - knob.x, pt.y - knob.y) <= 12 * unit;
   }
 
   function hitHandle(id, pt) {
@@ -326,6 +334,15 @@
       var val = $("prop-zoom-val");
       if (val) val.textContent = Math.round(panel.image.scale * 100) + "%";
     }
+    if (panel && panel.image) {
+      var shown = String(Math.round(panel.image.rotation || 0));
+      var rot = $("prop-rot");
+      var rotNum = $("prop-rot-num");
+      var rotVal = $("prop-rot-val");
+      if (rot) rot.value = shown;
+      if (rotNum) rotNum.value = shown;
+      if (rotVal) rotVal.textContent = shown + "°";
+    }
   }
 
   var ZOOM_MIN = 0.02;
@@ -348,7 +365,7 @@
     var title = document.createElement("p");
     title.className = "hint";
     title.textContent = panel.image
-      ? "Drag to pan. Scroll to zoom. Delete removes the image."
+      ? "Drag to pan. Scroll to zoom. Drag the handle above the picture to rotate. Hold Shift to snap. Delete removes the image."
       : "This panel is empty. Drop an image here or choose a file.";
     selProps.appendChild(title);
     if (panel.image) {
@@ -370,6 +387,51 @@
         session.zoomImage(current.id, sliderToScale(zoom.value), null);
         val.textContent = Math.round(current.image.scale * 100) + "%";
       });
+
+      var rot = document.createElement("input");
+      rot.type = "range";
+      rot.id = "prop-rot";
+      rot.min = "-180";
+      rot.max = "180";
+      rot.step = "1";
+      rot.value = String(Math.round(panel.image.rotation || 0));
+      var rotVal = document.createElement("span");
+      rotVal.id = "prop-rot-val";
+      rotVal.textContent = rot.value + "°";
+      var rotLabel = field("Rotation ", rot);
+      rotLabel.appendChild(rotVal);
+      selProps.appendChild(rotLabel);
+
+      var rotNum = document.createElement("input");
+      rotNum.type = "number";
+      rotNum.id = "prop-rot-num";
+      rotNum.min = "-180";
+      rotNum.max = "180";
+      rotNum.step = "1";
+      rotNum.value = rot.value;
+      rotNum.setAttribute("aria-label", "Rotation degrees");
+      var deg = document.createElement("span");
+      deg.className = "deg";
+      deg.appendChild(rotNum);
+      deg.appendChild(document.createTextNode("°"));
+      var degLabel = field("Degrees", deg);
+      selProps.appendChild(degLabel);
+
+      function showRotation(image) {
+        var shown = String(Math.round(image.rotation || 0));
+        rot.value = shown;
+        rotNum.value = shown;
+        rotVal.textContent = shown + "°";
+      }
+      function applyRotation(raw) {
+        if (!/^-?\d+(\.\d+)?$/.test(String(raw).trim())) return;
+        var current = panelById(selection.id);
+        if (!current || !current.image) return;
+        session.setImageRotation(current.id, Number(raw));
+        showRotation(current.image);
+      }
+      bindGesture(rot, function () { applyRotation(rot.value); });
+      bindGesture(rotNum, function () { applyRotation(rotNum.value); });
     }
     var actions = document.createElement("div");
     actions.className = "prop-actions";
@@ -377,6 +439,36 @@
       chooseImage(selection.id);
     }));
     if (panel.image) {
+      actions.appendChild(button("Rotate left 90°", "", function () {
+        session.turnImage(selection.id, -90);
+        propsKey = "";
+        syncProps();
+        render();
+      }));
+      actions.appendChild(button("Rotate right 90°", "", function () {
+        session.turnImage(selection.id, 90);
+        propsKey = "";
+        syncProps();
+        render();
+      }));
+      actions.appendChild(button("Flip horizontal", "", function () {
+        session.flipImage(selection.id, "x");
+        propsKey = "";
+        syncProps();
+        render();
+      }));
+      actions.appendChild(button("Flip vertical", "", function () {
+        session.flipImage(selection.id, "y");
+        propsKey = "";
+        syncProps();
+        render();
+      }));
+      actions.appendChild(button("Reset rotation", "", function () {
+        session.resetImageRotation(selection.id);
+        propsKey = "";
+        syncProps();
+        render();
+      }));
       actions.appendChild(button("Reset framing", "", function () {
         session.resetImage(selection.id);
         propsKey = "";
@@ -621,6 +713,23 @@
     }
     var handle = selection && selection.type === "letter" ? hitHandle(selection.id, pt) : null;
     var letter = handle ? letterById(selection.id) : hitLetter(pt);
+    var spinning = !letter && !handle && selection && selection.type === "panel" && hitImageRotate(selection.id, pt);
+    if (spinning) {
+      var spinPanel = panelById(selection.id);
+      drag = {
+        kind: "image-rotate",
+        id: spinPanel.id,
+        rotation: spinPanel.image.rotation || 0,
+        ox: spinPanel.image.cx,
+        oy: spinPanel.image.cy,
+        angle: Math.atan2(pt.y - spinPanel.image.cy, pt.x - spinPanel.image.cx),
+        cx: e.clientX,
+        cy: e.clientY,
+        started: false
+      };
+      render();
+      return;
+    }
     var panel = letter || handle ? null : hitPanel(pt);
     var cut = !panel && !letter ? hitCut(pt) : null;
     if (handle) {
@@ -676,7 +785,8 @@
           hoverCut = cut ? cut.cutId : null;
         }
         var handle = selection && selection.type === "letter" ? hitHandle(selection.id, pt) : null;
-        if (handle === "rotate" || handle === "tail") canvas.style.cursor = "crosshair";
+        var spinning = selection && selection.type === "panel" && hitImageRotate(selection.id, pt);
+        if (handle === "rotate" || handle === "tail" || spinning) canvas.style.cursor = "crosshair";
         else if (handle) canvas.style.cursor = resizeCursor(handle, (letterById(selection.id) || {}).rotation || 0);
         else if (hitLetter(pt)) canvas.style.cursor = "move";
         else if (hoverCut) canvas.style.cursor = "pointer";
@@ -692,7 +802,7 @@
       render();
       return;
     }
-    if (moved && !drag.started && (drag.kind === "letter" || drag.kind === "handle" || (drag.kind === "panel" && drag.img))) {
+    if (moved && !drag.started && (drag.kind === "letter" || drag.kind === "handle" || drag.kind === "image-rotate" || (drag.kind === "panel" && drag.img))) {
       drag.started = true;
       session.begin();
     }
@@ -704,6 +814,13 @@
       clampLetter(letter);
     } else if (drag.kind === "handle") {
       applyHandle(drag, pt, e.shiftKey);
+    } else if (drag.kind === "image-rotate") {
+      var ang = Math.atan2(pt.y - drag.oy, pt.x - drag.ox);
+      var deg = drag.rotation + (ang - drag.angle) * 180 / Math.PI;
+      if (e.shiftKey) deg = Math.round(deg / 15) * 15;
+      session.setImageRotation(drag.id, deg);
+      canvas.style.cursor = "crosshair";
+      updateLiveValues();
     } else if (drag.kind === "panel" && drag.img) {
       var panel = panelById(drag.id);
       if (panel && panel.image) {

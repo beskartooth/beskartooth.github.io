@@ -118,9 +118,18 @@
       cx: b.x + b.w / 2,
       cy: b.y + b.h / 2,
       scale: scale,
+      rotation: 0,
+      flipX: false,
+      flipY: false,
       width: image.width,
       height: image.height
     };
+  }
+
+  function normDeg(deg) {
+    var n = Number(deg);
+    if (!isFinite(n)) return 0;
+    return ((n + 180) % 360 + 360) % 360 - 180;
   }
 
   function scaleDoc(doc, nw, nh) {
@@ -385,6 +394,39 @@
         panel.image.cx = fit.cx;
         panel.image.cy = fit.cy;
         panel.image.scale = fit.scale;
+        panel.image.rotation = 0;
+        panel.image.flipX = false;
+        panel.image.flipY = false;
+        return true;
+      },
+      setImageRotation: function (panelId, deg) {
+        var panel = panelById(panelId);
+        if (!panel || !panel.image) return;
+        panel.image.rotation = normDeg(deg);
+      },
+      turnImage: function (panelId, delta) {
+        var panel = panelById(panelId);
+        if (!panel || !panel.image || !isFinite(delta) || delta === 0) return false;
+        checkpoint();
+        panel.image.rotation = normDeg((panel.image.rotation || 0) + delta);
+        return true;
+      },
+      flipImage: function (panelId, axis) {
+        var panel = panelById(panelId);
+        if (!panel || !panel.image) return false;
+        checkpoint();
+        if (axis === "y") panel.image.flipY = !panel.image.flipY;
+        else panel.image.flipX = !panel.image.flipX;
+        return true;
+      },
+      resetImageRotation: function (panelId) {
+        var panel = panelById(panelId);
+        if (!panel || !panel.image) return false;
+        if (!panel.image.rotation && !panel.image.flipX && !panel.image.flipY) return false;
+        checkpoint();
+        panel.image.rotation = 0;
+        panel.image.flipX = false;
+        panel.image.flipY = false;
         return true;
       },
       removeImage: function (panelId) {
@@ -482,6 +524,9 @@
               cx: Number(p.image.cx) || 0,
               cy: Number(p.image.cy) || 0,
               scale: clamp(Number(p.image.scale) || 1, 0.02, 10000),
+              rotation: normDeg(p.image.rotation || 0),
+              flipX: p.image.flipX === true,
+              flipY: p.image.flipY === true,
               width: Math.max(1, Number(p.image.width) || 1),
               height: Math.max(1, Number(p.image.height) || 1)
             };

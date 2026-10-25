@@ -190,6 +190,66 @@
     ctx.restore();
   }
 
+  function imagePoint(image, lx, ly) {
+    var a = (image.rotation || 0) * Math.PI / 180;
+    var cos = Math.cos(a);
+    var sin = Math.sin(a);
+    return {
+      x: image.cx + lx * cos - ly * sin,
+      y: image.cy + lx * sin + ly * cos
+    };
+  }
+
+  function imageKnob(image, unit, page) {
+    var h = Math.max(1, image.height * image.scale);
+    var margin = 16 * unit;
+    var outside = imagePoint(image, 0, -h / 2 - 22 * unit);
+    var onPage = !page || (
+      outside.x >= margin && outside.y >= margin &&
+      outside.x <= page.width - margin && outside.y <= page.height - margin
+    );
+    if (onPage) return outside;
+    var inside = imagePoint(image, 0, -Math.max(0, h / 2 - 34 * unit));
+    if (page) {
+      inside.x = Math.max(margin, Math.min(page.width - margin, inside.x));
+      inside.y = Math.max(margin, Math.min(page.height - margin, inside.y));
+    }
+    return inside;
+  }
+
+  function drawImageFrame(ctx, image, unit, page) {
+    var w = image.width * image.scale;
+    var h = image.height * image.scale;
+    var corners = [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]];
+    ctx.save();
+    ctx.strokeStyle = "#8eb6ff";
+    ctx.lineWidth = 1.5 * unit;
+    ctx.setLineDash([5 * unit, 4 * unit]);
+    ctx.beginPath();
+    corners.forEach(function (c, i) {
+      var p = imagePoint(image, c[0], c[1]);
+      if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    var top = imagePoint(image, 0, -h / 2);
+    var knob = imageKnob(image, unit, page);
+    ctx.beginPath();
+    ctx.moveTo(top.x, top.y);
+    ctx.lineTo(knob.x, knob.y);
+    ctx.strokeStyle = "#8eb6ff";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(knob.x, knob.y, 6 * unit, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.strokeStyle = "#2d6adf";
+    ctx.lineWidth = 1.5 * unit;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function rot(letter, lx, ly) {
     var cx = letter.x + letter.w / 2;
     var cy = letter.y + letter.h / 2;
@@ -265,7 +325,11 @@
           ctx.clip();
           var w = img.naturalWidth * panel.image.scale;
           var h = img.naturalHeight * panel.image.scale;
-          ctx.drawImage(img, panel.image.cx - w / 2, panel.image.cy - h / 2, w, h);
+          var placed = panel.image;
+          ctx.translate(placed.cx, placed.cy);
+          ctx.rotate((placed.rotation || 0) * Math.PI / 180);
+          ctx.scale(placed.flipX ? -1 : 1, placed.flipY ? -1 : 1);
+          ctx.drawImage(img, -w / 2, -h / 2, w, h);
           ctx.restore();
         }
       }
@@ -351,6 +415,7 @@
         ctx.setLineDash([6 * unit, 4 * unit]);
         ctx.stroke();
         ctx.restore();
+        if (selected.image) drawImageFrame(ctx, selected.image, unit, page);
       }
     }
     if (opts.selection && opts.selection.type === "letter") {
@@ -425,6 +490,7 @@
     renderPage: renderPage,
     renderBlob: renderBlob,
     ensureFonts: ensureFonts,
-    fontString: fontString
+    fontString: fontString,
+    imageKnob: imageKnob
   };
 })();
