@@ -63,7 +63,7 @@ button { cursor: pointer; }
   height: 100%;
   min-width: 980px;
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr) 36px;
+  grid-template-rows: 58px minmax(0, 1fr) auto 36px;
 }
 
 #top, #tools, #props, #status {
@@ -230,3 +230,124 @@ label .deg input { width: 5.5rem; }
   box-shadow: var(--shadow);
 }
 #editor.show { display: block; }
+
+#bank {
+  background: var(--rail);
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.bank-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 0;
+}
+#bank.collapsed .bank-bar { padding-bottom: 8px; }
+#bank-toggle {
+  background: transparent;
+  border: 0;
+  padding: 4px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+#bank-toggle::before {
+  content: "▾ ";
+  color: var(--accent);
+}
+#bank.collapsed #bank-toggle::before { content: "▸ "; }
+#bank-count { color: var(--text); font-size: 12px; font-weight: 700; }
+.bank-note { color: var(--muted); font-size: 12px; margin-right: auto; }
+#bank-tray {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 12px 12px;
+  min-height: 92px;
+}
+#bank.collapsed #bank-tray { display: none; }
+#bank-tray.hot { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.bank-card {
+  position: relative;
+  flex: 0 0 92px;
+  width: 92px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101319;
+  padding: 4px;
+  cursor: grab;
+}
+.bank-card img {
+  display: block;
+  width: 100%;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #fff;
+  pointer-events: none;
+}
+.bank-name {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bank-used {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+.bank-x {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  opacity: 0;
+  background: #1b1e27;
+}
+.bank-card:hover .bank-x,
+.bank-card:focus-within .bank-x { opacity: 1; }
+
+#confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.confirm-card {
+  width: min(440px, 100%);
+  background: var(--rail);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+.confirm-card h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+}
+.confirm-card p { margin: 0; color: var(--text); line-height: 1.45; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }

@@ -10,6 +10,7 @@
   var stage = document.getElementById("stage");
   var editor = document.getElementById("editor");
   var fileImage = document.getElementById("file-image");
+  var fileBank = document.getElementById("file-bank");
   var fileProject = document.getElementById("file-project");
   var statusEl = document.getElementById("status");
   var metaEl = document.getElementById("meta");
@@ -479,6 +480,7 @@
         session.removeImage(selection.id);
         propsKey = "";
         syncProps();
+        renderBank();
         render();
       }));
     }
@@ -980,16 +982,61 @@
 
   function useImageFile(panelId, file) {
     readImageFile(file).then(function (info) {
+      info.name = file.name;
       session.setImage(panelId, info);
       select({ type: "panel", id: panelId });
       propsKey = "";
-      setStatus("Image added. Drag to pan, scroll to zoom.");
+      setStatus("Image placed. A copy stays in the image bank.");
       syncPageFields();
       syncProps();
+      renderBank();
+      persistBank();
       render();
     }).catch(function (err) {
       setStatus(err.message || "Could not read that image.");
     });
+  }
+
+  function imageFiles(list) {
+    var files = [];
+    if (!list) return files;
+    for (var i = 0; i < list.length; i++) {
+      var file = list[i];
+      var name = (file.name || "").toLowerCase();
+      if (/^image\/(png|jpeg|webp)$/.test(file.type) || /\.(png|jpe?g|webp)$/.test(name)) files.push(file);
+    }
+    return files;
+  }
+
+  function readImageFiles(files) {
+    return Promise.all(files.map(function (file) {
+      return readImageFile(file).then(function (info) {
+        info.name = file.name;
+        return info;
+      }).catch(function () { return null; });
+    })).then(function (infos) { return infos.filter(Boolean); });
+  }
+
+  function finishBankAdd(infos, panelId, attempted) {
+    if (!infos.length) {
+      setStatus("Use PNG, JPG, or WebP images.");
+      render();
+      return;
+    }
+    var ids = session.addBankItems(infos);
+    if (panelId && ids[0]) {
+      session.placeBankImage(panelId, ids[0]);
+      select({ type: "panel", id: panelId });
+      propsKey = "";
+    }
+    renderBank();
+    persistBank();
+    syncPageFields();
+    syncProps();
+    render();
+    var skipped = attempted > infos.length ? " Some files were skipped." : "";
+    if (panelId) setStatus("Added " + ids.length + " to the bank and placed one in the panel." + skipped);
+    else setStatus("Added " + ids.length + (ids.length === 1 ? " image" : " images") + " to the bank." + skipped);
   }
 
   fileImage.addEventListener("change", function () {
@@ -1013,7 +1060,8 @@
   function saveProject() {
     var json = JSON.stringify(session.toJSON());
     downloadBlob(new Blob([json], { type: "application/json" }), "comic-studio-project.json");
-    setStatus("Project saved on this device. It contains your images.");
+    session.markClean();
+    setStatus("Project saved on this device. It contains your page and image bank.");
   }
 
   function exportPage(mime) {
@@ -1040,6 +1088,8 @@
     setStatus("Undid the last change.");
     syncPageFields();
     syncProps();
+    renderBank();
+    persistBank();
     render();
   }
   function doRedo() {
@@ -1050,6 +1100,8 @@
     setStatus("Redid the change.");
     syncPageFields();
     syncProps();
+    renderBank();
+    persistBank();
     render();
   }
 
@@ -1063,11 +1115,12 @@
       var panel = panelById(selection.id);
       if (!panel || !panel.image) return;
       session.removeImage(selection.id);
-      setStatus("Image removed.");
+      setStatus("Image removed from the panel. It is still in the bank.");
     }
     propsKey = "";
     syncPageFields();
     syncProps();
+    renderBank();
     render();
   }
 
@@ -1082,6 +1135,7 @@
     btn.dataset.layout = layout.id;
     btn.innerHTML = layout.name + "<small>" + layout.hint + "</small>";
     btn.addEventListener("click", function () {
+      if (layout.id === "blank") { requestBlank(); return; }
       session.applyLayout(layout.id);
       if (selection && selection.type === "panel") selection = null;
       propsKey = "";
@@ -1160,6 +1214,8 @@
         setStatus("Project loaded.");
         syncPageFields();
         syncProps();
+        renderBank();
+        persistBank();
         render();
       } catch (err) {
         setStatus(err.message || "Could not load that file.");
@@ -1196,15 +1252,16 @@
   });
   canvas.addEventListener("drop", function (e) {
     e.preventDefault();
+    e.stopPropagation();
     dropId = null;
-    var files = e.dataTransfer && e.dataTransfer.files;
-    if (!files || !files.length) return;
-    var file = null;
-    for (var i = 0; i < files.length; i++) {
-      var name = (files[i].name || "").toLowerCase();
-      if (/^image\/(png|jpeg|webp)$/.test(files[i].type) || /\.(png|jpe?g|webp)$/.test(name)) { file = files[i]; break; }
+    var bankId = "";
+    if (e.dataTransfer) {
+      bankId = e.dataTransfer.getData("application/x-comic-studio-bank");
+      if (!bankId) {
+        var plain = e.dataTransfer.getData("text/plain") || "";
+        if (plain.indexOf("comic-studio-bank:") === 0) bankId = plain.slice("comic-studio-bank:".length);
+      }
     }
-    if (!file) { setStatus("Drop a PNG, JPG, or WebP image."); render(); return; }
     var panel = hitPanel(eventPoint(e));
     if (!panel) {
       var pt = eventPoint(e);
@@ -1217,13 +1274,35 @@
       });
       panel = best;
     }
-    if (panel) useImageFile(panel.id, file);
-    render();
+    if (bankId && panel) {
+      session.placeBankImage(panel.id, bankId);
+      select({ type: "panel", id: panel.id });
+      propsKey = "";
+      setStatus("Placed from the image bank.");
+      syncPageFields();
+      syncProps();
+      renderBank();
+      render();
+      return;
+    }
+    var files = imageFiles(e.dataTransfer && e.dataTransfer.files);
+    if (!files.length) { setStatus("Drop a PNG, JPG, or WebP image."); render(); return; }
+    var target = panel && panel.id;
+    readImageFiles(files).then(function (infos) { finishBankAdd(infos, target, files.length); });
   });
   window.addEventListener("dragover", function (e) { e.preventDefault(); });
-  window.addEventListener("drop", function (e) { e.preventDefault(); });
+  window.addEventListener("drop", function (e) {
+    e.preventDefault();
+    var el = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
+    if (!el || !el.closest) return;
+    if (el.closest("#page") || el.closest("#bank")) return;
+    var files = imageFiles(e.dataTransfer && e.dataTransfer.files);
+    if (!files.length) return;
+    readImageFiles(files).then(function (infos) { finishBankAdd(infos, null, files.length); });
+  });
 
   document.addEventListener("keydown", function (e) {
+    if (!$("confirm").hidden) return;
     if (e.key === "Escape" && editingId) return;
     var typing = e.target && (e.target.matches("input, textarea, select"));
     var key = e.key.toLowerCase();
@@ -1259,6 +1338,285 @@
     else if (key === "s") setTool("sfx");
   });
 
+  var bankEpoch = 0;
+  var confirmKey = null;
+
+  function ask(opts) {
+    return new Promise(function (resolve) {
+      var root = $("confirm");
+      $("confirm-title").textContent = opts.title;
+      $("confirm-body").textContent = opts.body;
+      var ok = $("confirm-ok");
+      var alt = $("confirm-alt");
+      var cancel = $("confirm-cancel");
+      ok.textContent = opts.ok;
+      cancel.textContent = opts.cancel || "Cancel";
+      alt.hidden = !opts.alt;
+      if (opts.alt) alt.textContent = opts.alt;
+      function close(value) {
+        root.hidden = true;
+        document.removeEventListener("keydown", onKey, true);
+        confirmKey = null;
+        resolve(value);
+      }
+      function onKey(e) {
+        if (e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopPropagation();
+        close("cancel");
+      }
+      ok.onclick = function () { close("ok"); };
+      alt.onclick = function () { close("alt"); };
+      cancel.onclick = function () { close("cancel"); };
+      root.onclick = function (e) { if (e.target === root) close("cancel"); };
+      confirmKey = onKey;
+      document.addEventListener("keydown", onKey, true);
+      root.hidden = false;
+      cancel.focus();
+    });
+  }
+
+  function openBankDb() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open("comic-studio", 1);
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        if (!db.objectStoreNames.contains("bank")) db.createObjectStore("bank", { keyPath: "id" });
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  function readStoredBank() {
+    return openBankDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction("bank", "readonly");
+        var req = tx.objectStore("bank").getAll();
+        req.onsuccess = function () { resolve(req.result || []); };
+        req.onerror = function () { reject(req.error); };
+      });
+    });
+  }
+
+  function writeStoredBank(records) {
+    return openBankDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction("bank", "readwrite");
+        var store = tx.objectStore("bank");
+        store.clear();
+        records.forEach(function (record) { store.put(record); });
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+
+  function persistBank() {
+    bankEpoch++;
+    var epoch = bankEpoch;
+    writeStoredBank(session.bankSnapshot()).catch(function () {
+      if (epoch === bankEpoch) setStatus("The bank is on this page, but this browser could not keep it for next time.");
+    });
+  }
+
+  function renderBank() {
+    var tray = $("bank-tray");
+    if (!tray) return;
+    tray.textContent = "";
+    var bank = session.doc.bank || [];
+    $("bank-count").textContent = bank.length ? String(bank.length) : "Empty";
+    var used = {};
+    session.doc.panels.forEach(function (panel) {
+      if (panel.image) used[panel.image.id] = true;
+    });
+    if (!bank.length) {
+      var empty = document.createElement("p");
+      empty.className = "bank-note";
+      empty.textContent = "No images yet.";
+      tray.appendChild(empty);
+      return;
+    }
+    bank.forEach(function (item) {
+      var card = document.createElement("article");
+      card.className = "bank-card";
+      card.draggable = true;
+      card.title = item.name;
+      card.dataset.bankId = item.id;
+      var img = document.createElement("img");
+      img.alt = "";
+      img.draggable = false;
+      img.src = session.images.get(item.id) || "";
+      card.appendChild(img);
+      if (used[item.id]) {
+        var badge = document.createElement("span");
+        badge.className = "bank-used";
+        badge.textContent = "Used";
+        card.appendChild(badge);
+      }
+      var remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "bank-x";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", "Remove " + item.name + " from the bank");
+      remove.addEventListener("mousedown", function (e) { e.stopPropagation(); });
+      remove.addEventListener("click", function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        session.removeBankItem(item.id);
+        renderBank();
+        persistBank();
+        render();
+        setStatus("Removed from the bank. A picture still on the page stays until you remove it there.");
+      });
+      card.appendChild(remove);
+      var name = document.createElement("span");
+      name.className = "bank-name";
+      name.textContent = item.name;
+      card.appendChild(name);
+      card.addEventListener("dragstart", function (e) {
+        if (e.target === remove) { e.preventDefault(); return; }
+        e.dataTransfer.setData("application/x-comic-studio-bank", item.id);
+        e.dataTransfer.setData("text/plain", "comic-studio-bank:" + item.id);
+        e.dataTransfer.effectAllowed = "copy";
+      });
+      tray.appendChild(card);
+    });
+  }
+
+  function refreshAfterPageChange(message) {
+    selection = null;
+    cutStart = null;
+    cutCursor = null;
+    preview = null;
+    propsKey = "";
+    pruneCache();
+    setStatus(message);
+    syncPageFields();
+    syncProps();
+    renderBank();
+    render();
+  }
+
+  function finishNew(keepBank) {
+    var size = Math.round(session.doc.page.width) + "×" + Math.round(session.doc.page.height);
+    if (editingId) editor.blur();
+    session.newPage({ keepBank: keepBank });
+    session.markClean();
+    persistBank();
+    refreshAfterPageChange("New blank page at " + size + ". Undo brings the previous page back.");
+  }
+
+  function pageHasWork() {
+    var doc = session.doc;
+    if (doc.letters.length) return true;
+    if (doc.panels.length !== 1 || doc.panels[0].image) return true;
+    return false;
+  }
+
+  function requestNew() {
+    if (editingId) editor.blur();
+    var dirty = session.isDirty();
+    var hasBank = (session.doc.bank || []).length > 0;
+    var work = pageHasWork();
+    if (!dirty && !hasBank && !work) { finishNew(true); return; }
+    var page = session.doc.page;
+    var size = Math.round(page.width) + "×" + Math.round(page.height);
+    var body = "Start a blank page at " + size + "?";
+    if (dirty) body += " This page has unsaved changes.";
+    if (work) body += " The current panels and lettering are replaced. Undo can bring them back.";
+    if (hasBank) body += " Keep the image bank, or clear it too?";
+    ask({
+      title: "New page",
+      body: body,
+      ok: hasBank ? "Keep bank" : "New page",
+      alt: hasBank ? "Clear bank" : null,
+      cancel: "Cancel"
+    }).then(function (choice) {
+      if (choice === "cancel") return;
+      finishNew(choice !== "alt");
+    });
+  }
+
+  function applyBlank() {
+    var changed = session.applyLayout("blank");
+    refreshAfterPageChange(changed
+      ? "Blank layout. One panel. Undo brings the previous panels back."
+      : "Already one full panel.");
+  }
+
+  function requestBlank() {
+    var hasImage = session.doc.panels.some(function (panel) { return panel.image; });
+    if (!hasImage) { applyBlank(); return; }
+    ask({
+      title: "Blank layout",
+      body: "This clears every cut and removes pictures from the panels. Copies in the image bank stay. You can undo.",
+      ok: "Blank page",
+      cancel: "Cancel"
+    }).then(function (choice) {
+      if (choice === "ok") applyBlank();
+    });
+  }
+
+  $("new-page").addEventListener("click", requestNew);
+  $("bank-add").addEventListener("click", function () {
+    fileBank.value = "";
+    fileBank.click();
+  });
+  fileBank.addEventListener("change", function () {
+    var files = imageFiles(fileBank.files);
+    fileBank.value = "";
+    if (!files.length) { setStatus("Use PNG, JPG, or WebP images."); return; }
+    readImageFiles(files).then(function (infos) { finishBankAdd(infos, null, files.length); });
+  });
+  $("bank-clear").addEventListener("click", function () {
+    if (!(session.doc.bank || []).length) { setStatus("The image bank is already empty."); return; }
+    ask({
+      title: "Clear image bank",
+      body: "Remove every thumbnail from the bank on this device? Pictures already placed on the page stay. You can undo.",
+      ok: "Clear bank",
+      cancel: "Cancel"
+    }).then(function (choice) {
+      if (choice !== "ok") return;
+      session.clearBank();
+      renderBank();
+      persistBank();
+      render();
+      setStatus("Image bank cleared.");
+    });
+  });
+
+  var bankOpen = localStorage.getItem("comic-studio-bank-open") !== "0";
+  function setBankOpen(open) {
+    bankOpen = open;
+    $("bank").classList.toggle("collapsed", !open);
+    $("bank-toggle").setAttribute("aria-expanded", open ? "true" : "false");
+    localStorage.setItem("comic-studio-bank-open", open ? "1" : "0");
+    render();
+  }
+  $("bank-toggle").addEventListener("click", function () { setBankOpen(!bankOpen); });
+  setBankOpen(bankOpen);
+
+  var bankTray = $("bank-tray");
+  var bankRoot = $("bank");
+  function bankDragHot(on) { bankTray.classList.toggle("hot", on); }
+  bankRoot.addEventListener("dragover", function (e) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    bankDragHot(true);
+  });
+  bankRoot.addEventListener("dragleave", function (e) {
+    if (!bankRoot.contains(e.relatedTarget)) bankDragHot(false);
+  });
+  bankRoot.addEventListener("drop", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    bankDragHot(false);
+    var files = imageFiles(e.dataTransfer && e.dataTransfer.files);
+    if (!files.length) return;
+    readImageFiles(files).then(function (infos) { finishBankAdd(infos, null, files.length); });
+  });
+
   window.addEventListener("resize", render);
   if (window.ResizeObserver) new ResizeObserver(render).observe(stage);
 
@@ -1273,5 +1631,13 @@
   setTool("select");
   syncPageFields();
   syncProps();
+  renderBank();
   render();
+  readStoredBank().then(function (items) {
+    if (bankEpoch !== 0 || !items || !items.length) return;
+    session.replaceBank(items);
+    session.markClean();
+    renderBank();
+    render();
+  }).catch(function () {});
 })();
