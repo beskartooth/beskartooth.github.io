@@ -22,7 +22,7 @@ The page sets a Content Security Policy that blocks network requests.
 1. Pick a page size (standard comic, webtoon strip, square, 16:9, 9:16, or custom pixels). The standard comic preset is a 6.625×10.25 page at 1325×2050 px.
 2. Set the page background, gutter width, and the optional panel border (on by default, thin and black).
 3. Choose a layout or draw your own cuts.
-4. Drop a PNG, JPG, or WebP onto a panel, or click an empty panel to choose a file. Drag to pan. Scroll, or use the zoom slider, to scale. Replace, reset, or remove the image from the side panel.
+4. Drop a PNG, JPG, or WebP onto a panel, or click an empty panel to choose a file. Drag to pan. Scroll, or use the zoom slider, to scale. Rotate with the handle above the picture, the rotation slider, or the degrees field. Shift snaps the handle to 15° steps. Rotate left or right by 90°, flip the picture horizontally or vertically, or reset the rotation. Reset framing puts the picture back to an upright cover fit. Replace or remove the image from the side panel.
 5. Add lettering: speech bubble, thought bubble, caption, or sound-effect text. Drag to move, drag handles to resize, double-click to edit. Sound effects can rotate. Delete removes the selection.
 6. Undo with Ctrl+Z and redo with Ctrl+Y (Ctrl+Shift+Z also redos).
 7. Save a project JSON, load it later, or export a full-resolution PNG or JPG at the page size. Export does not include selection handles or other editor chrome.
@@ -48,7 +48,7 @@ Layouts (six-panel grid, three tiers, four-panel grid, splash plus two, vertical
 | Delete / Backspace | Delete lettering, or remove the selected panel’s image |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 | Ctrl+S | Save project |
-| Shift | Snap a cut, tail, or rotation |
+| Shift | Snap a cut, tail, or rotation to a straight step |
 | Esc | Cancel a cut, or return to Select |
 
 ## Fonts
@@ -81,3 +81,4 @@ node comic-studio/test/geometry.test.cjs
 - If two panels both have images when they merge, the larger panel’s image is the one that remains.
 - Page width and height are limited to 64–8192 pixels. Very large images use more memory, and undo keeps them until that step leaves the history.
 - Text wraps simply inside each shape. Desktop Chrome and Edge are the browsers this was built for.
+- Image rotation is stored in the same project file. A project saved before rotation existed still opens; those pictures come back upright and unflipped.

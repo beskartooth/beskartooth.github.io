@@ -219,6 +219,53 @@ function mulberry32(a) {
   assert(s2.doc.panels.length === 1, "undo load restores blank");
 }
 
+// Image rotation, flips, and older project files.
+{
+  const s = Doc.createSession();
+  s.setPageSize(400, 300);
+  const id = s.doc.panels[0].id;
+  s.setImage(id, { dataUrl: "data:image/png;base64,bbbb", width: 100, height: 50 });
+  const fresh = s.doc.panels[0].image;
+  assert(fresh.rotation === 0 && fresh.flipX === false && fresh.flipY === false, "new image is upright");
+  assert(s.turnImage(id, 90), "turn right");
+  assert(s.doc.panels[0].image.rotation === 90, "rotation 90");
+  s.turnImage(id, 90);
+  s.turnImage(id, 90);
+  assert(near(s.doc.panels[0].image.rotation, -90), "third quarter turn wraps to -90");
+  assert(s.flipImage(id, "x"), "flip horizontal");
+  assert(s.doc.panels[0].image.flipX === true && s.doc.panels[0].image.flipY === false, "flip x only");
+  assert(s.undo(), "undo flip");
+  assert(s.doc.panels[0].image.flipX === false, "flip undone");
+  assert(near(s.doc.panels[0].image.rotation, -90), "rotation survives undo");
+  assert(s.redo(), "redo flip");
+  assert(s.doc.panels[0].image.flipX === true, "flip redone");
+  s.setImageRotation(id, 190);
+  assert(near(s.doc.panels[0].image.rotation, -170), "190 degrees wraps");
+  const raw = s.toJSON();
+  assert(raw.panels[0].image.rotation === s.doc.panels[0].image.rotation, "json keeps rotation");
+  assert(raw.panels[0].image.flipX === true, "json keeps flip");
+  const s3 = Doc.createSession();
+  s3.loadJSON(JSON.stringify(raw));
+  const again = s3.doc.panels.find((p) => p.image);
+  assert(again && near(again.image.rotation, -170) && again.image.flipX === true, "reload rotation");
+  const old = JSON.parse(JSON.stringify(raw));
+  delete old.panels[0].image.rotation;
+  delete old.panels[0].image.flipX;
+  delete old.panels[0].image.flipY;
+  const s2 = Doc.createSession();
+  s2.loadJSON(old);
+  const legacy = s2.doc.panels.find((p) => p.image);
+  assert(legacy && legacy.image.rotation === 0 && legacy.image.flipX === false && legacy.image.flipY === false, "v1 file without rotation still loads");
+  assert(s2.images.get(legacy.image.id).includes("bbbb"), "legacy image bytes");
+  assert(s.resetImageRotation(id), "reset rotation");
+  assert(s.doc.panels[0].image.rotation === 0 && s.doc.panels[0].image.flipX === false, "rotation cleared");
+  assert(s.doc.panels[0].image.scale === fresh.scale, "reset rotation keeps zoom");
+  assert(s.undo(), "undo rotation reset");
+  s.turnImage(id, 35);
+  s.resetImage(id);
+  assert(s.doc.panels[0].image.rotation === 0 && s.doc.panels[0].image.flipX === false, "reset framing clears rotation");
+}
+
 // Snap helper.
 {
   const s = G.snapAxis({ x: 10, y: 10 }, { x: 40, y: 18 });
