@@ -29,6 +29,14 @@
       <span class="sep" aria-hidden="true"></span>
       <button type="button" id="export-png" class="primary">Export PNG</button>
       <button type="button" id="export-jpg">Export JPG</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" id="shortcuts-open" title="Shortcuts (?)">
+        <svg class="key-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <rect x="2.5" y="5" width="19" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
+          <path d="M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M8 13.5h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+        </svg>
+        Shortcuts
+      </button>
     </div>
   </header>
   <div id="workspace">
@@ -44,7 +52,22 @@
       <div class="layouts" id="layouts"></div>
       <p class="hint">Blank clears back to one panel. Other layouts are starter cuts you can keep cutting or merge. <kbd>Shift</kbd> snaps a cut straight.</p>
     </aside>
-    <main id="stage"><canvas id="page" width="800" height="1200" aria-label="Comic page"></canvas></main>
+    <div id="stage-wrap">
+      <main id="stage">
+        <div id="view"><canvas id="page" width="800" height="1200" aria-label="Comic page"></canvas></div>
+      </main>
+      <div id="view-controls" aria-label="View zoom">
+        <button type="button" id="view-out" title="Zoom out (−)">−</button>
+        <select id="view-zoom" title="View zoom">
+          <option value="fit">Fit</option>
+          <option value="0.5">50%</option>
+          <option value="1">100%</option>
+          <option value="2">200%</option>
+          <option value="4">400%</option>
+        </select>
+        <button type="button" id="view-in" title="Zoom in (+)">+</button>
+      </div>
+    </div>
     <aside id="props">
       <h2>Page</h2>
       <label>Size
@@ -89,6 +112,63 @@
 <input id="file-image" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden>
 <input id="file-bank" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple hidden>
 <input id="file-project" type="file" accept="application/json,.json" hidden>
+<div id="shortcuts" hidden>
+  <div class="shortcuts-card" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+    <div class="shortcuts-head">
+      <h2 id="shortcuts-title">Shortcuts</h2>
+      <button type="button" id="shortcuts-close">Close</button>
+    </div>
+    <p class="hint">View zoom only changes what you see on screen. The page and the exported file stay the same size. A scroll gesture is one undo step.</p>
+    <div class="shortcuts-grid">
+      <section>
+        <h3>Tools</h3>
+        <p><kbd>V</kbd> Select</p>
+        <p><kbd>C</kbd> Cut</p>
+        <p><kbd>B</kbd> Speech bubble</p>
+        <p><kbd>T</kbd> Thought bubble</p>
+        <p><kbd>K</kbd> Caption</p>
+        <p><kbd>S</kbd> Sound effect</p>
+        <p><kbd>Shift</kbd> Snap a cut horizontal or vertical</p>
+      </section>
+      <section>
+        <h3>Image</h3>
+        <p><kbd>Scroll</kbd> Zoom the selected picture while the pointer is over it</p>
+        <p><kbd>Ctrl</kbd>+<kbd>Scroll</kbd> Zoom that picture toward the pointer</p>
+        <p><kbd>Alt</kbd>+<kbd>Scroll</kbd> Rotate 5° per notch</p>
+        <p><kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>Scroll</kbd> Rotate in 15° steps</p>
+        <p><kbd>Shift</kbd> while dragging the handle snaps to 15°</p>
+        <p>Side panel: flip horizontal, flip vertical, turn 90°, reset rotation, reset framing</p>
+      </section>
+      <section>
+        <h3>View</h3>
+        <p><kbd>Ctrl</kbd>+<kbd>0</kbd> Fit the page in the window</p>
+        <p><kbd>Ctrl</kbd>+<kbd>1</kbd> 100%, actual pixels</p>
+        <p><kbd>+</kbd> <kbd>−</kbd> Zoom the view in or out</p>
+        <p><kbd>Ctrl</kbd>+<kbd>Scroll</kbd> Zoom the view toward the pointer, unless the pointer is over the selected picture or lettering</p>
+        <p>Corner menu: Fit, 50%, 100%, 200%, 400%</p>
+        <p><kbd>Space</kbd>+drag Pan</p>
+        <p>Middle-mouse drag Pan</p>
+        <p><kbd>Scroll</kbd> Scroll the page, except over the selected picture</p>
+      </section>
+      <section>
+        <h3>Lettering</h3>
+        <p>Drag to move. Double-click to edit. Drag handles to resize, rotate, or move a tail</p>
+        <p><kbd>Ctrl</kbd>+<kbd>Scroll</kbd> Resize the selected lettering</p>
+        <p><kbd>Alt</kbd>+<kbd>Scroll</kbd> Rotate it 5° (Shift snaps to 15°)</p>
+        <p><kbd>Delete</kbd> Remove it</p>
+      </section>
+      <section>
+        <h3>Editing</h3>
+        <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> Undo</p>
+        <p><kbd>Ctrl</kbd>+<kbd>Y</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> Redo</p>
+        <p><kbd>Delete</kbd> or <kbd>Backspace</kbd> Delete the selection</p>
+        <p><kbd>Ctrl</kbd>+<kbd>S</kbd> Save the project</p>
+        <p><kbd>Esc</kbd> Close this panel, cancel a cut, or return to Select</p>
+        <p><kbd>?</kbd> Open this panel</p>
+      </section>
+    </div>
+  </div>
+</div>
 <div id="confirm" hidden>
   <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
     <h2 id="confirm-title"></h2>

@@ -91,6 +91,8 @@ button { cursor: pointer; }
 .brand strong { display: block; font-size: 16px; letter-spacing: 0.01em; }
 .brand em { font-style: normal; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+#shortcuts-open { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.key-ico { display: block; }
 .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
 
 button, .file-btn {
@@ -159,23 +161,63 @@ h2 {
 .layouts button small { display: block; font-weight: 500; color: var(--muted); margin-top: 2px; }
 .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 12px 0 0; }
 
-#stage {
+#stage-wrap {
+  position: relative;
   min-width: 0;
   min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+}
+#stage {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
   background:
     radial-gradient(900px 420px at 50% 0%, rgba(226, 162, 58, 0.08), transparent 55%),
     #0d0f14;
+}
+#view {
+  position: relative;
+  box-sizing: border-box;
+  min-width: 100%;
+  min-height: 100%;
+  width: max-content;
+  height: max-content;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 22px;
 }
 #page {
+  display: block;
+  flex: 0 0 auto;
   background: #fff;
   box-shadow: var(--shadow), 0 0 0 1px rgba(255, 255, 255, 0.06);
   touch-action: none;
-  max-width: 100%;
-  max-height: 100%;
+}
+#stage.space #page { cursor: grab; }
+#stage.panning #page { cursor: grabbing; }
+#view-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(25, 28, 36, 0.94);
+  box-shadow: var(--shadow);
+}
+#view-controls button { min-width: 32px; padding: 6px 8px; font-weight: 700; }
+#view-zoom {
+  width: auto;
+  min-width: 5.5rem;
+  background: #101319;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
 }
 
 #props label, .field {
@@ -351,3 +393,57 @@ label .deg input { width: 5.5rem; }
 }
 .confirm-card p { margin: 0; color: var(--text); line-height: 1.45; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+#shortcuts {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.shortcuts-card {
+  width: min(880px, 100%);
+  max-height: min(82vh, 760px);
+  overflow: auto;
+  background: var(--rail);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 18px 10px;
+  box-shadow: var(--shadow);
+}
+.shortcuts-head { display: flex; align-items: center; gap: 12px; }
+.shortcuts-head h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+}
+.shortcuts-head button { margin-left: auto; }
+.shortcuts-card > .hint { margin: 10px 0 0; }
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 28px;
+  margin-top: 12px;
+}
+.shortcuts-grid section { margin: 0 0 12px; }
+.shortcuts-grid h3 {
+  margin: 8px 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.shortcuts-grid p { margin: 0 0 6px; font-size: 13px; line-height: 1.4; }
+.shortcuts-grid kbd, .hint kbd {
+  font: 11px ui-monospace, monospace;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 4px;
+  background: #101319;
+}
