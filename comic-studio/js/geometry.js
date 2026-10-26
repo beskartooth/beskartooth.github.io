@@ -575,11 +575,40 @@ function cleanupCollinear(poly, others) {
 
   function lineIntersect(l1, l2) {
     var crossD = l1.dx * l2.dy - l1.dy * l2.dx;
-    if (Math.abs(crossD) < 1e-10) return null;
+    if (Math.abs(crossD) < 1e-8) return null;
     var dx = l2.px - l1.px;
     var dy = l2.py - l1.py;
     var t = (dx * l2.dy - dy * l2.dx) / crossD;
     return { x: l1.px + l1.dx * t, y: l1.py + l1.dy * t };
+  }
+
+  function clipPolygonToRect(points, w, h) {
+    function clipEdge(input, inside, cross) {
+      var output = [];
+      if (!input.length) return output;
+      for (var i = 0; i < input.length; i++) {
+        var cur = input[i];
+        var prev = input[(i + input.length - 1) % input.length];
+        var curIn = inside(cur);
+        var prevIn = inside(prev);
+        if (curIn) {
+          if (!prevIn) output.push(cross(prev, cur));
+          output.push({ x: cur.x, y: cur.y });
+        } else if (prevIn) output.push(cross(prev, cur));
+      }
+      return output;
+    }
+    function hit(a, b, axis, value) {
+      var den = b[axis] - a[axis];
+      var t = Math.abs(den) < 1e-9 ? 0 : (value - a[axis]) / den;
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+    var pts = points;
+    pts = clipEdge(pts, function (p) { return p.x >= -0.01; }, function (a, b) { return hit(a, b, "x", 0); });
+    pts = clipEdge(pts, function (p) { return p.x <= w + 0.01; }, function (a, b) { return hit(a, b, "x", w); });
+    pts = clipEdge(pts, function (p) { return p.y >= -0.01; }, function (a, b) { return hit(a, b, "y", 0); });
+    pts = clipEdge(pts, function (p) { return p.y <= h + 0.01; }, function (a, b) { return hit(a, b, "y", h); });
+    return pts.length >= 3 ? pts : null;
   }
 
   function offsetInset(points, dists) {
@@ -605,8 +634,13 @@ function cleanupCollinear(poly, others) {
     }
     var out = [];
     for (var k = 0; k < n; k++) {
-      var pt = lineIntersect(lines[(k + n - 1) % n], lines[k]);
-      if (!pt || !isFinite(pt.x) || !isFinite(pt.y)) return null;
+      var prev = lines[(k + n - 1) % n];
+      var curr = lines[k];
+      var pt = lineIntersect(prev, curr);
+      var allowance = Math.max(dists[k] || 0, dists[(k + n - 1) % n] || 0, 1) * 12;
+      if (!pt || !isFinite(pt.x) || !isFinite(pt.y) || Math.hypot(pt.x - points[k].x, pt.y - points[k].y) > allowance) {
+        pt = { x: curr.px, y: curr.py };
+      }
       out.push(pt);
     }
     var area = signedArea(out);
@@ -626,7 +660,9 @@ function cleanupCollinear(poly, others) {
       if (!cw.edgeCuts[i] && isPageBoundary(a, b, page.width, page.height)) dists.push(0);
       else dists.push(gutter / 2);
     }
-    return offsetInset(cw.points, dists);
+    var inset = offsetInset(cw.points, dists);
+    if (!inset) return null;
+    return clipPolygonToRect(inset, page.width, page.height);
   }
 
   return {

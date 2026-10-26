@@ -149,6 +149,38 @@ function checkLayout(panels, w, h, label) {
   assert(near(Math.min.apply(null, li.map((p) => p.y)), 0, 0.6), "top edge stays");
 }
 
+// A T-junction keeps a full gutter, and insets stay on the page.
+{
+  const page = { width: 240, height: 180, gutter: 20 };
+  let panels = [Object.assign({ id: "p" }, G.rectPanel(page.width, page.height))];
+  panels = G.applyCut(panels, { x: 0, y: 90 }, { x: 240, y: 90 }, "h").panels;
+  panels = G.applyCut(panels, { x: 80, y: 0 }, { x: 110, y: 90 }, "stem").panels;
+  assert(panels.length === 3, "T has 3 panels");
+  const insets = panels.map((panel) => G.insetPolygon(panel, page));
+  insets.forEach((poly, i) => assert(poly && poly.length >= 3, "T inset " + i));
+  insets.forEach((poly) => poly.forEach((pt) => {
+    assert(pt.x >= -0.6 && pt.y >= -0.6 && pt.x <= page.width + 0.6 && pt.y <= page.height + 0.6, "inset stays on the page");
+  }));
+  const bottom = insets[panels.findIndex((panel) => G.bounds(panel.points).y > 40)];
+  const topYs = [];
+  insets.forEach((poly, i) => {
+    if (G.bounds(panels[i].points).y > 40) return;
+    poly.forEach((pt) => { if (pt.y > 70 && pt.y < 100) topYs.push(pt.y); });
+  });
+  const bottomYs = bottom.filter((pt) => pt.y > 70 && pt.y < 110).map((pt) => pt.y);
+  const gap = Math.min.apply(null, bottomYs) - Math.max.apply(null, topYs);
+  assert(near(gap, 20, 1.5), "T gutter stays full width " + gap);
+  let angled = [Object.assign({ id: "p" }, G.rectPanel(page.width, page.height))];
+  angled = G.applyCut(angled, { x: 0, y: 8 }, { x: 240, y: 30 }, "shallow").panels;
+  angled.forEach((panel) => {
+    const poly = G.insetPolygon(panel, page);
+    assert(poly, "shallow inset");
+    poly.forEach((pt) => {
+      assert(pt.x >= -0.6 && pt.y >= -0.6 && pt.x <= page.width + 0.6 && pt.y <= page.height + 0.6, "shallow inset stays on the page");
+    });
+  });
+}
+
 // A segment in the lower half does not slice the upper panel.
 {
   const w = 100, h = 100;

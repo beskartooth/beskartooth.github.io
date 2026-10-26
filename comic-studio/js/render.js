@@ -313,6 +313,9 @@
     var page = doc.page;
     var unit = opts.unit || 1;
     ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, page.width, page.height);
+    ctx.clip();
     ctx.fillStyle = page.background;
     ctx.fillRect(0, 0, page.width, page.height);
     doc.panels.forEach(function (panel) {

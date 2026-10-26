@@ -44,10 +44,10 @@
       <h2>Tools</h2>
       <button type="button" class="tool" data-tool="select" aria-pressed="true">Select <kbd>V</kbd></button>
       <button type="button" class="tool" data-tool="cut" aria-pressed="false">Cut <kbd>C</kbd></button>
-      <button type="button" class="tool" data-tool="bubble" aria-pressed="false">Bubble <kbd>B</kbd></button>
-      <button type="button" class="tool" data-tool="thought" aria-pressed="false">Thought <kbd>T</kbd></button>
-      <button type="button" class="tool" data-tool="caption" aria-pressed="false">Caption <kbd>K</kbd></button>
-      <button type="button" class="tool" data-tool="sfx" aria-pressed="false">SFX <kbd>S</kbd></button>
+      <button type="button" class="tool" data-tool="bubble" aria-pressed="false">Bubble <span class="tool-preview preview-bubble" aria-hidden="true"></span><kbd>B</kbd></button>
+      <button type="button" class="tool" data-tool="thought" aria-pressed="false">Thought <span class="tool-preview preview-thought" aria-hidden="true"></span><kbd>T</kbd></button>
+      <button type="button" class="tool" data-tool="caption" aria-pressed="false">Caption <span class="tool-preview preview-caption" aria-hidden="true"></span><kbd>K</kbd></button>
+      <button type="button" class="tool" data-tool="sfx" aria-pressed="false">SFX <span class="tool-preview preview-sfx" aria-hidden="true">SFX!!</span><kbd>S</kbd></button>
       <h2>Layouts</h2>
       <div class="layouts" id="layouts"></div>
       <p class="hint">Blank clears back to one panel. Other layouts are starter cuts you can keep cutting or merge. <kbd>Shift</kbd> snaps a cut straight.</p>
@@ -134,7 +134,8 @@
         <h3>Image</h3>
         <p><kbd>Scroll</kbd> Zoom the selected picture while the pointer is over it</p>
         <p><kbd>Ctrl</kbd>+<kbd>Scroll</kbd> Zoom that picture toward the pointer</p>
-        <p><kbd>Alt</kbd>+<kbd>Scroll</kbd> Rotate 5° per notch</p>
+        <p><kbd>Alt</kbd>+<kbd>Scroll</kbd> Rotate 1° per notch</p>
+        <p><kbd>Ctrl</kbd>+<kbd>V</kbd> Paste an image into the selected panel, or into the bank</p>
         <p><kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>Scroll</kbd> Rotate in 15° steps</p>
         <p><kbd>Shift</kbd> while dragging the handle snaps to 15°</p>
         <p>Side panel: flip horizontal, flip vertical, turn 90°, reset rotation, reset framing</p>
@@ -154,7 +155,7 @@
         <h3>Lettering</h3>
         <p>Drag to move. Double-click to edit. Drag handles to resize, rotate, or move a tail</p>
         <p><kbd>Ctrl</kbd>+<kbd>Scroll</kbd> Resize the selected lettering</p>
-        <p><kbd>Alt</kbd>+<kbd>Scroll</kbd> Rotate it 5° (Shift snaps to 15°)</p>
+        <p><kbd>Alt</kbd>+<kbd>Scroll</kbd> Rotate it 1° (Shift snaps to 15°)</p>
         <p><kbd>Delete</kbd> Remove it</p>
       </section>
       <section>
