@@ -23,8 +23,8 @@ The page sets a Content Security Policy that blocks network requests.
 1. Pick a page size (standard comic, webtoon strip, square, 16:9, 9:16, or custom pixels). The standard comic preset is a 6.625×10.25 page at 1325×2050 px.
 2. Set the page background, gutter width, and the optional panel border (on by default, thin and black).
 3. Choose a layout or draw your own cuts. Blank, the first layout, clears back to one full panel. If a panel has a picture, it asks first. Undo brings the panels back.
-4. Drop a PNG, JPG, or WebP onto a panel, or click an empty panel to choose a file. Drag to pan the picture. Scroll over the selected picture, or use the zoom slider, to scale it. Ctrl+scroll over that picture zooms it toward the pointer. Alt+scroll rotates it 5° per notch, and Shift+Alt snaps those turns to 15°. You can also rotate with the handle above the picture, the rotation slider, or the degrees field. Shift snaps the handle to 15° steps. Rotate left or right by 90°, flip the picture horizontally or vertically, or reset the rotation. Reset framing puts the picture back to an upright cover fit. Replace or remove the image from the side panel.
-5. Add lettering: speech bubble, thought bubble, caption, or sound-effect text. Drag to move, drag handles to resize, double-click to edit. Ctrl+scroll resizes the selected lettering, and Alt+scroll rotates it. Delete removes the selection.
+4. Drop a PNG, JPG, or WebP onto a panel, or click an empty panel to choose a file. Drag to pan the picture. Scroll over the selected picture, or use the zoom slider, to scale it. Ctrl+scroll over that picture zooms it toward the pointer. Alt+scroll rotates it 1° per notch, and Shift+Alt snaps those turns to 15°. Ctrl+V pastes a copied image into the selected panel, or into the image bank when nothing is selected. You can also rotate with the handle above the picture, the rotation slider, or the degrees field. Shift snaps the handle to 15° steps. Rotate left or right by 90°, flip the picture horizontally or vertically, or reset the rotation. Reset framing puts the picture back to an upright cover fit. Replace or remove the image from the side panel.
+5. Add lettering: speech bubble, thought bubble, caption, or sound-effect text. After you place one, the tool returns to Select. Drag to move, drag handles to resize, double-click to edit. Ctrl+scroll resizes the selected lettering, and Alt+scroll rotates it 1° per notch. Delete removes the selection.
 6. Undo with Ctrl+Z and redo with Ctrl+Y (Ctrl+Shift+Z also redos). A scroll gesture is one undo step.
 7. New, in the top bar, starts a blank single panel at the current page size and clears lettering. If the page has unsaved changes, it asks first. If the image bank has pictures, it asks whether to keep the bank. Undo brings the previous page back.
 8. Save a project JSON, load it later, or export a full-resolution PNG or JPG at the page size. Export does not include selection handles or other editor chrome. The project file includes the image bank. A project saved before the bank existed still opens, with an empty bank.
@@ -66,7 +66,8 @@ The Shortcuts button in the top bar, or the ? key, opens the full list. Esc clos
 | + / − | Zoom the view in or out |
 | Scroll | Scroll the page, or zoom the selected picture when the pointer is over it |
 | Ctrl+scroll | Zoom the view, or zoom the selected picture or lettering under the pointer |
-| Alt+scroll | Rotate the picture or selected lettering 5° per notch |
+| Alt+scroll | Rotate the picture or selected lettering 1° per notch |
+| Ctrl+V | Paste an image into the selected panel, or into the bank |
 | Shift+Alt+scroll | Rotate in 15° steps |
 | Space+drag, middle-mouse drag | Pan the view |
 | Shift | Snap a cut, tail, or rotation to a straight step |

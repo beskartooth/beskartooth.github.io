@@ -492,7 +492,7 @@
     var title = document.createElement("p");
     title.className = "hint";
     title.textContent = panel.image
-      ? "Drag to pan the picture. Scroll, or Ctrl+scroll, zooms it toward the pointer. Alt+scroll rotates 5° (Shift snaps to 15°). Delete removes it."
+      ? "Drag to pan the picture. Scroll, or Ctrl+scroll, zooms it toward the pointer. Alt+scroll rotates 1° (Shift snaps to 15°). Delete removes it."
       : "This panel is empty. Drop an image here or choose a file.";
     selProps.appendChild(title);
     if (panel.image) {
@@ -619,7 +619,7 @@
     var names = { bubble: "Speech bubble", thought: "Thought bubble", caption: "Caption", sfx: "Sound effect" };
     var heading = document.createElement("p");
     heading.className = "hint";
-    heading.textContent = names[letter.type] + ". Drag to move. Double-click to edit. Ctrl+scroll resizes. Alt+scroll rotates. Delete removes it.";
+    heading.textContent = names[letter.type] + ". Drag to move. Double-click to edit. Ctrl+scroll resizes. Alt+scroll rotates 1°. Delete removes it.";
     selProps.appendChild(heading);
     var text = document.createElement("textarea");
     text.value = letter.text;
@@ -979,6 +979,7 @@
       preview = null;
       if (created) {
         select({ type: "letter", id: created.id });
+        setTool("select");
         setStatus("Lettering added. Double-click it to edit the words.");
       }
     } else if (drag.kind === "gutter" && !moved) {
@@ -1083,14 +1084,14 @@
   function zoomImageByWheel(panel, pt, e) {
     armWheelGesture();
     var dy = wheelPixels(e);
-    session.zoomImage(panel.id, panel.image.scale * Math.exp(-dy * 0.0012), pt);
+    session.zoomImage(panel.id, panel.image.scale * Math.exp(-dy * 0.0004), pt);
     updateLiveValues();
     render();
   }
 
   function resizeLetterByWheel(letter, e) {
     armWheelGesture();
-    scaleLetter(letter, Math.exp(-wheelPixels(e) * 0.0012));
+    scaleLetter(letter, Math.exp(-wheelPixels(e) * 0.0004));
     updateLiveValues();
     render();
   }
@@ -1102,7 +1103,7 @@
     if (!letter && selection && selection.type === "letter" && !hitPanel(pt)) letter = letterById(selection.id);
     if (letter) {
       armWheelGesture();
-      var deg = e.shiftKey ? snappedTurn(letter.rotation || 0, notches) : (letter.rotation || 0) + notches * 5;
+      var deg = e.shiftKey ? snappedTurn(letter.rotation || 0, notches) : (letter.rotation || 0) + notches;
       session.updateLetter(letter.id, { rotation: deg });
       updateLiveValues();
       render();
@@ -1114,7 +1115,7 @@
     if (!panel || !panel.image) return;
     if (!selection || selection.id !== panel.id) select({ type: "panel", id: panel.id });
     armWheelGesture();
-    var next = e.shiftKey ? snappedTurn(panel.image.rotation || 0, notches) : (panel.image.rotation || 0) + notches * 5;
+    var next = e.shiftKey ? snappedTurn(panel.image.rotation || 0, notches) : (panel.image.rotation || 0) + notches;
     session.setImageRotation(panel.id, next);
     updateLiveValues();
     render();
@@ -1137,7 +1138,7 @@
       if (image) { zoomImageByWheel(image, pt, e); return; }
       var letter = selectedLetterAt(pt);
       if (letter) { resizeLetterByWheel(letter, e); return; }
-      zoomViewBy(Math.exp(-wheelPixels(e) * 0.0015), e);
+      zoomViewBy(Math.exp(-wheelPixels(e) * 0.0004), e);
       return;
     }
     var plainImage = selectedImageAt(pt);
@@ -1647,7 +1648,7 @@
     e.preventDefault();
     e.stopPropagation();
     if (drag || viewPan) return;
-    zoomViewBy(Math.exp(-wheelPixels(e) * 0.0015), e);
+    zoomViewBy(Math.exp(-wheelPixels(e) * 0.0004), e);
   }, { passive: false });
 
   document.addEventListener("keydown", function (e) {
@@ -1718,12 +1719,44 @@
     } else if (e.key === "Escape") {
       if (cutStart) { cutStart = null; cutCursor = null; setStatus("Cut cancelled."); render(); }
       else setTool("select");
+    } else if ((e.ctrlKey || e.metaKey) && key === "v") {
+      return;
     } else if (key === "v") setTool("select");
     else if (key === "c") setTool("cut");
     else if (key === "b") setTool("bubble");
     else if (key === "t") setTool("thought");
     else if (key === "k") setTool("caption");
     else if (key === "s") setTool("sfx");
+  });
+
+  document.addEventListener("paste", function (e) {
+    if (!$("confirm").hidden || !$("shortcuts").hidden) return;
+    var typing = e.target && e.target.matches && e.target.matches("input, textarea, select");
+    if (typing || editingId) return;
+    var data = e.clipboardData;
+    if (!data) return;
+    var files = [];
+    var items = data.items;
+    if (items) {
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].kind !== "file") continue;
+        var file = items[i].getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (!files.length && data.files) {
+      for (var j = 0; j < data.files.length; j++) files.push(data.files[j]);
+    }
+    files = imageFiles(files);
+    if (!files.length) return;
+    e.preventDefault();
+    var panelId = selection && selection.type === "panel" ? selection.id : null;
+    readImageFiles(files).then(function (infos) {
+      infos.forEach(function (info, index) {
+        if (!info.name) info.name = "Pasted image" + (infos.length > 1 ? " " + (index + 1) : "");
+      });
+      finishBankAdd(infos, panelId, files.length);
+    });
   });
 
   var bankEpoch = 0;
