@@ -29,10 +29,17 @@
   var propsKey = "";
   var imageTarget = null;
   var wheelTimer = 0;
+  var rotAccum = 0;
+  var viewMode = "fit";
+  var viewScale = 1;
+  var viewStageW = -1;
+  var viewStageH = -1;
+  var spaceDown = false;
+  var viewPan = null;
   var cache = new Map();
 
   var HINTS = {
-    select: "Select: drag an image to pan, scroll to zoom, drag the round handle to rotate. Click a gutter to merge panels. Double-click text to edit.",
+    select: "Select: drag a picture to pan it, scroll to zoom it. Ctrl+scroll zooms the view. ? opens shortcuts.",
     cut: "Cut: click the start, then the end. The line splits every panel it crosses. Hold Shift to snap horizontal or vertical.",
     bubble: "Drag to place a speech bubble. The orange handle moves the tail.",
     thought: "Drag to place a thought bubble. The orange handle moves the little circles.",
@@ -215,31 +222,137 @@
     syncProps();
   }
 
-  function fitCanvas() {
-    var rect = stage.getBoundingClientRect();
-    var pad = 36;
-    var availW = Math.max(40, rect.width - pad);
-    var availH = Math.max(40, rect.height - pad);
+  function fitScale() {
+    var availW = Math.max(40, stage.clientWidth - 48);
+    var availH = Math.max(40, stage.clientHeight - 48);
     var page = session.doc.page;
-    var cssW = availW;
-    var cssH = cssW * page.height / page.width;
-    if (cssH > availH) {
-      cssH = availH;
-      cssW = cssH * page.width / page.height;
+    return Math.min(availW / page.width, availH / page.height);
+  }
+
+  function activeScale() {
+    return viewMode === "fit" ? fitScale() : viewScale;
+  }
+
+  function syncViewControls() {
+    var sel = $("view-zoom");
+    if (!sel) return;
+    var custom = sel.querySelector("[data-custom]");
+    if (viewMode === "fit") {
+      if (custom) custom.remove();
+      if (sel.value !== "fit") sel.value = "fit";
+      return;
     }
+    var match = null;
+    [0.5, 1, 2, 4].forEach(function (value) {
+      if (Math.abs(viewScale - value) < 0.001) match = String(value);
+    });
+    if (match) {
+      if (custom) custom.remove();
+      if (sel.value !== match) sel.value = match;
+      return;
+    }
+    var label = Math.round(viewScale * 100) + "%";
+    if (!custom) {
+      custom = document.createElement("option");
+      custom.dataset.custom = "1";
+      custom.value = "custom";
+      sel.appendChild(custom);
+    }
+    custom.textContent = label;
+    if (sel.value !== "custom") sel.value = "custom";
+  }
+
+  function fitCanvas() {
+    var page = session.doc.page;
+    var scale = activeScale();
+    var cssW = Math.max(1, page.width * scale);
+    var cssH = Math.max(1, page.height * scale);
+    var slackW = Math.max(1, stage.clientWidth);
+    var slackH = Math.max(1, stage.clientHeight);
+    var viewEl = $("view");
+    viewEl.style.width = (cssW + slackW) + "px";
+    viewEl.style.height = (cssH + slackH) + "px";
+    canvas.style.left = (slackW / 2) + "px";
+    canvas.style.top = (slackH / 2) + "px";
     canvas.style.width = cssW + "px";
     canvas.style.height = cssH + "px";
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var bw = Math.max(1, Math.round(cssW * dpr));
-    var bh = Math.max(1, Math.round(cssH * dpr));
+    var bw = cssW * dpr;
+    var bh = cssH * dpr;
+    var maxPixels = 12 * 1024 * 1024;
+    if (bw * bh > maxPixels) {
+      var shrink = Math.sqrt(maxPixels / (bw * bh));
+      bw *= shrink;
+      bh *= shrink;
+    }
+    bw = Math.max(1, Math.round(bw));
+    bh = Math.max(1, Math.round(bh));
     if (canvas.width !== bw || canvas.height !== bh) {
       canvas.width = bw;
       canvas.height = bh;
     }
+    syncViewControls();
+  }
+
+  function centerView() {
+    var view = $("view");
+    stage.scrollLeft = Math.max(0, (view.scrollWidth - stage.clientWidth) / 2);
+    stage.scrollTop = Math.max(0, (view.scrollHeight - stage.clientHeight) / 2);
+  }
+
+  function pinView(point, clientX, clientY) {
+    var page = session.doc.page;
+    var stageRect = stage.getBoundingClientRect();
+    var contentX = canvas.offsetLeft + (point.x / page.width) * canvas.offsetWidth;
+    var contentY = canvas.offsetTop + (point.y / page.height) * canvas.offsetHeight;
+    stage.scrollLeft = contentX - (clientX - stageRect.left);
+    stage.scrollTop = contentY - (clientY - stageRect.top);
+  }
+
+  function setViewScale(next, anchor) {
+    var point = anchor ? eventPoint(anchor) : null;
+    var clientX = anchor ? anchor.clientX : 0;
+    var clientY = anchor ? anchor.clientY : 0;
+    viewMode = "scale";
+    viewScale = clamp(next, 0.02, 8);
+    fitCanvas();
+    if (point) pinView(point, clientX, clientY);
+    render();
+    if (point) pinView(point, clientX, clientY);
+  }
+
+  function stageCenterAnchor() {
+    var rect = stage.getBoundingClientRect();
+    return { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+  }
+
+  function zoomViewBy(factor, anchor) {
+    setViewScale(activeScale() * factor, anchor || stageCenterAnchor());
+  }
+
+  function setFit() {
+    viewMode = "fit";
+    fitCanvas();
+    centerView();
+    render();
+  }
+
+  function setActual() {
+    setViewScale(1, stageCenterAnchor());
   }
 
   function render() {
+    var sw = stage.clientWidth;
+    var sh = stage.clientHeight;
+    var stageChanged = viewStageW > 0 && (sw !== viewStageW || sh !== viewStageH);
     fitCanvas();
+    if (viewMode === "fit" && (viewStageW < 0 || stageChanged)) centerView();
+    else if (viewMode === "scale" && stageChanged) {
+      stage.scrollLeft += (sw - viewStageW) / 2;
+      stage.scrollTop += (sh - viewStageH) / 2;
+    }
+    viewStageW = sw;
+    viewStageH = sh;
     var ctx = canvas.getContext("2d");
     var page = session.doc.page;
     ctx.setTransform(canvas.width / page.width, 0, 0, canvas.height / page.height, 0, 0);
@@ -327,7 +440,20 @@
 
   function updateLiveValues() {
     if (selProps.contains(document.activeElement)) return;
-    if (!selection || selection.type !== "panel") return;
+    if (!selection) return;
+    if (selection.type === "letter") {
+      var letter = letterById(selection.id);
+      var sizeInput = $("prop-letter-size");
+      var rotInput = $("prop-letter-rot");
+      if (letter && sizeInput) {
+        sizeInput.value = String(Math.round(letter.fontSize));
+        var sizeVal = $("prop-letter-size-val");
+        if (sizeVal) sizeVal.textContent = Math.round(letter.fontSize) + " px";
+      }
+      if (letter && rotInput) rotInput.value = String(Math.round(letter.rotation || 0));
+      return;
+    }
+    if (selection.type !== "panel") return;
     var panel = panelById(selection.id);
     var zoom = $("prop-zoom");
     if (panel && panel.image && zoom) {
@@ -366,7 +492,7 @@
     var title = document.createElement("p");
     title.className = "hint";
     title.textContent = panel.image
-      ? "Drag to pan. Scroll to zoom. Drag the handle above the picture to rotate. Hold Shift to snap. Delete removes the image."
+      ? "Drag to pan the picture. Scroll, or Ctrl+scroll, zooms it toward the pointer. Alt+scroll rotates 5° (Shift snaps to 15°). Delete removes it."
       : "This panel is empty. Drop an image here or choose a file.";
     selProps.appendChild(title);
     if (panel.image) {
@@ -493,7 +619,7 @@
     var names = { bubble: "Speech bubble", thought: "Thought bubble", caption: "Caption", sfx: "Sound effect" };
     var heading = document.createElement("p");
     heading.className = "hint";
-    heading.textContent = names[letter.type] + ". Drag to move. Double-click to edit. Delete removes it.";
+    heading.textContent = names[letter.type] + ". Drag to move. Double-click to edit. Ctrl+scroll resizes. Alt+scroll rotates. Delete removes it.";
     selProps.appendChild(heading);
     var text = document.createElement("textarea");
     text.value = letter.text;
@@ -525,10 +651,12 @@
 
     var size = document.createElement("input");
     size.type = "range";
+    size.id = "prop-letter-size";
     size.min = "8";
-    size.max = "280";
+    size.max = "400";
     size.value = String(Math.round(letter.fontSize));
     var sizeVal = document.createElement("span");
+    sizeVal.id = "prop-letter-size-val";
     sizeVal.textContent = Math.round(letter.fontSize) + " px";
     var sizeLabel = field("Size ", size);
     sizeLabel.appendChild(sizeVal);
@@ -580,6 +708,7 @@
 
     var rot = document.createElement("input");
     rot.type = "range";
+    rot.id = "prop-letter-rot";
     rot.min = "-180";
     rot.max = "180";
     rot.value = String(Math.round(letter.rotation || 0));
@@ -687,9 +816,10 @@
   }
 
   function onDown(e) {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || spaceDown || viewPan) return;
+    finishWheelGesture();
     if (editingId && e.target === canvas) editor.blur();
-    canvas.setPointerCapture(e.pointerId);
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* pointer already released */ }
     var pt = eventPoint(e);
     if (tool === "cut") {
       if (e.shiftKey && cutStart) pt = G.snapAxis(cutStart, pt);
@@ -771,7 +901,12 @@
   }
 
   function onMove(e) {
+    if (viewPan) return;
     var pt = eventPoint(e);
+    if (spaceDown && !drag) {
+      canvas.style.cursor = "grab";
+      return;
+    }
     if (tool === "cut" && cutStart) {
       cutCursor = e.shiftKey ? G.snapAxis(cutStart, pt) : pt;
       render();
@@ -863,25 +998,153 @@
     render();
   }
 
-  function onWheel(e) {
-    if (tool !== "select" || drag) return;
-    var pt = eventPoint(e);
-    var panel = hitPanel(pt);
-    if (!panel || !panel.image) return;
-    e.preventDefault();
-    if (!selection || selection.id !== panel.id) select({ type: "panel", id: panel.id });
-    if (!wheelTimer) session.begin();
-    var dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
-    session.zoomImage(panel.id, panel.image.scale * Math.exp(-dy * 0.0012), pt);
+  function finishWheelGesture() {
+    if (!wheelTimer) return;
     clearTimeout(wheelTimer);
-    wheelTimer = setTimeout(function () {
-      wheelTimer = 0;
-      session.end();
-      syncPageFields();
-      updateLiveValues();
-    }, 320);
+    wheelTimer = 0;
+    rotAccum = 0;
+    session.end();
+    syncPageFields();
+    updateLiveValues();
+  }
+
+  function armWheelGesture() {
+    if (!wheelTimer) session.begin();
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(finishWheelGesture, 320);
+  }
+
+  function wheelPixels(e) {
+    var dy = e.deltaY;
+    if (e.deltaMode === 1) dy *= 16;
+    if (e.deltaMode === 2) dy *= Math.max(stage.clientHeight, 400);
+    return dy;
+  }
+
+  function wheelNotches(e) {
+    if (e.deltaMode === 1) return Math.round(e.deltaY);
+    if (e.deltaMode === 2) return Math.sign(e.deltaY) * 3;
+    var dy = e.deltaY;
+    if (Math.abs(dy) >= 40) return Math.sign(dy) * Math.max(1, Math.round(Math.abs(dy) / 100));
+    rotAccum += dy;
+    if (Math.abs(rotAccum) < 40) return 0;
+    var notches = Math.sign(rotAccum);
+    rotAccum = 0;
+    return notches;
+  }
+
+  function snappedTurn(current, notches) {
+    var next = current;
+    var sign = notches > 0 ? 1 : -1;
+    var steps = Math.abs(notches);
+    for (var i = 0; i < steps; i++) {
+      next = sign > 0 ? Math.floor(next / 15) * 15 + 15 : Math.ceil(next / 15) * 15 - 15;
+    }
+    return next;
+  }
+
+  function selectedImageAt(pt) {
+    if (!selection || selection.type !== "panel") return null;
+    var panel = panelById(selection.id);
+    if (!panel || !panel.image) return null;
+    var hit = hitPanel(pt);
+    if (!hit || hit.id !== panel.id) return null;
+    return panel;
+  }
+
+  function selectedLetterAt(pt) {
+    if (!selection || selection.type !== "letter") return null;
+    var letter = hitLetter(pt);
+    if (!letter || letter.id !== selection.id) return null;
+    return letter;
+  }
+
+  function scaleLetter(letter, factor) {
+    if (!letter || !isFinite(factor) || factor <= 0) return;
+    var k = factor;
+    if (k < 1) k = Math.max(k, 48 / letter.w, 36 / letter.h, 8 / Math.max(letter.fontSize, 1));
+    else k = Math.min(k, 400 / Math.max(letter.fontSize, 1));
+    if (Math.abs(k - 1) < 0.0001) return;
+    var cx = letter.x + letter.w / 2;
+    var cy = letter.y + letter.h / 2;
+    letter.w *= k;
+    letter.h *= k;
+    letter.fontSize *= k;
+    letter.strokeWidth = clamp(letter.strokeWidth * k, 0, 80);
+    letter.shapeStrokeWidth = clamp(letter.shapeStrokeWidth * k, 0, 48);
+    letter.x = cx - letter.w / 2;
+    letter.y = cy - letter.h / 2;
+    if (letter.tail) {
+      letter.tail.dx *= k;
+      letter.tail.dy *= k;
+    }
+  }
+
+  function zoomImageByWheel(panel, pt, e) {
+    armWheelGesture();
+    var dy = wheelPixels(e);
+    session.zoomImage(panel.id, panel.image.scale * Math.exp(-dy * 0.0012), pt);
     updateLiveValues();
     render();
+  }
+
+  function resizeLetterByWheel(letter, e) {
+    armWheelGesture();
+    scaleLetter(letter, Math.exp(-wheelPixels(e) * 0.0012));
+    updateLiveValues();
+    render();
+  }
+
+  function rotateByWheel(pt, e) {
+    var notches = wheelNotches(e);
+    if (!notches) return;
+    var letter = selectedLetterAt(pt);
+    if (!letter && selection && selection.type === "letter" && !hitPanel(pt)) letter = letterById(selection.id);
+    if (letter) {
+      armWheelGesture();
+      var deg = e.shiftKey ? snappedTurn(letter.rotation || 0, notches) : (letter.rotation || 0) + notches * 5;
+      session.updateLetter(letter.id, { rotation: deg });
+      updateLiveValues();
+      render();
+      return;
+    }
+    var hit = hitPanel(pt);
+    var panel = hit && hit.image ? hit : null;
+    if (!panel && selection && selection.type === "panel") panel = panelById(selection.id);
+    if (!panel || !panel.image) return;
+    if (!selection || selection.id !== panel.id) select({ type: "panel", id: panel.id });
+    armWheelGesture();
+    var next = e.shiftKey ? snappedTurn(panel.image.rotation || 0, notches) : (panel.image.rotation || 0) + notches * 5;
+    session.setImageRotation(panel.id, next);
+    updateLiveValues();
+    render();
+  }
+
+  function onWheel(e) {
+    if (drag || viewPan) return;
+    var ctrl = e.ctrlKey || e.metaKey;
+    var alt = e.altKey;
+    if (ctrl || alt) e.preventDefault();
+    var pt = eventPoint(e);
+    if (alt && !ctrl) {
+      e.preventDefault();
+      rotateByWheel(pt, e);
+      return;
+    }
+    if (ctrl) {
+      e.preventDefault();
+      var image = selectedImageAt(pt);
+      if (image) { zoomImageByWheel(image, pt, e); return; }
+      var letter = selectedLetterAt(pt);
+      if (letter) { resizeLetterByWheel(letter, e); return; }
+      zoomViewBy(Math.exp(-wheelPixels(e) * 0.0015), e);
+      return;
+    }
+    var plainImage = selectedImageAt(pt);
+    if (plainImage && !spaceDown) {
+      e.preventDefault();
+      zoomImageByWheel(plainImage, pt, e);
+    }
   }
 
   function openEditor(letter) {
@@ -1239,7 +1502,63 @@
     if (drag) return;
     if (hoverCut) { hoverCut = null; render(); }
   });
-  canvas.addEventListener("wheel", onWheel, { passive: false });
+  stage.addEventListener("wheel", onWheel, { passive: false });
+  window.addEventListener("wheel", function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) e.preventDefault();
+  }, { passive: false, capture: true });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Alt") e.preventDefault();
+  }, true);
+  document.addEventListener("keyup", function (e) {
+    if (e.key === "Alt") e.preventDefault();
+    if (e.code === "Space") {
+      spaceDown = false;
+      stage.classList.remove("space");
+    }
+  }, true);
+  window.addEventListener("blur", function () {
+    spaceDown = false;
+    stage.classList.remove("space");
+    viewPan = null;
+    stage.classList.remove("panning");
+  });
+
+  function startViewPan(e) {
+    if (viewPan) return;
+    e.preventDefault();
+    e.stopPropagation();
+    finishWheelGesture();
+    viewPan = {
+      x: e.clientX,
+      y: e.clientY,
+      sl: stage.scrollLeft,
+      st: stage.scrollTop,
+      id: e.pointerId
+    };
+    stage.classList.add("panning");
+    try { stage.setPointerCapture(e.pointerId); } catch (err) { /* already captured */ }
+  }
+  stage.addEventListener("pointerdown", function (e) {
+    if (e.button === 1 || (e.button === 0 && spaceDown)) startViewPan(e);
+  }, true);
+  stage.addEventListener("pointermove", function (e) {
+    if (!viewPan || e.pointerId !== viewPan.id) return;
+    stage.scrollLeft = viewPan.sl - (e.clientX - viewPan.x);
+    stage.scrollTop = viewPan.st - (e.clientY - viewPan.y);
+  });
+  function endViewPan(e) {
+    if (!viewPan || (e && e.pointerId !== viewPan.id)) return;
+    viewPan = null;
+    stage.classList.remove("panning");
+  }
+  stage.addEventListener("pointerup", endViewPan);
+  stage.addEventListener("pointercancel", endViewPan);
+  stage.addEventListener("auxclick", function (e) {
+    if (e.button === 1) e.preventDefault();
+  });
+  stage.addEventListener("mousedown", function (e) {
+    if (e.button === 1) e.preventDefault();
+  });
   canvas.addEventListener("dragover", function (e) {
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
@@ -1301,8 +1620,45 @@
     readImageFiles(files).then(function (infos) { finishBankAdd(infos, null, files.length); });
   });
 
+  function openShortcuts() {
+    var root = $("shortcuts");
+    root.hidden = false;
+    $("shortcuts-close").focus();
+  }
+  function closeShortcuts() {
+    var root = $("shortcuts");
+    if (root.hidden) return;
+    root.hidden = true;
+  }
+  $("shortcuts-open").addEventListener("click", openShortcuts);
+  $("shortcuts-close").addEventListener("click", closeShortcuts);
+  $("shortcuts").addEventListener("click", function (e) {
+    if (e.target === $("shortcuts")) closeShortcuts();
+  });
+
+  $("view-out").addEventListener("click", function () { zoomViewBy(1 / 1.25); });
+  $("view-in").addEventListener("click", function () { zoomViewBy(1.25); });
+  $("view-zoom").addEventListener("change", function () {
+    var value = $("view-zoom").value;
+    if (value === "fit") setFit();
+    else if (value !== "custom") setViewScale(Number(value), stageCenterAnchor());
+  });
+  $("view-controls").addEventListener("wheel", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (drag || viewPan) return;
+    zoomViewBy(Math.exp(-wheelPixels(e) * 0.0015), e);
+  }, { passive: false });
+
   document.addEventListener("keydown", function (e) {
     if (!$("confirm").hidden) return;
+    if (!$("shortcuts").hidden) {
+      if (e.key === "Escape" || e.key === "?") {
+        e.preventDefault();
+        closeShortcuts();
+      }
+      return;
+    }
     if (e.key === "Escape" && editingId) return;
     var typing = e.target && (e.target.matches("input, textarea, select"));
     var key = e.key.toLowerCase();
@@ -1323,7 +1679,39 @@
       saveProject();
       return;
     }
+    if ((e.ctrlKey || e.metaKey) && e.key === "0") {
+      e.preventDefault();
+      setFit();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === "1") {
+      e.preventDefault();
+      setActual();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_")) {
+      e.preventDefault();
+      zoomViewBy(e.key === "-" || e.key === "_" ? 1 / 1.25 : 1.25);
+      return;
+    }
+    if (e.code === "Space") {
+      if (typing) return;
+      e.preventDefault();
+      spaceDown = true;
+      stage.classList.add("space");
+      return;
+    }
     if (typing) return;
+    if (e.key === "+" || e.key === "=" || e.key === "-") {
+      e.preventDefault();
+      zoomViewBy(e.key === "-" ? 1 / 1.25 : 1.25);
+      return;
+    }
+    if (e.key === "?") {
+      e.preventDefault();
+      openShortcuts();
+      return;
+    }
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       deleteSelection();

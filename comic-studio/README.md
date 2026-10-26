@@ -23,9 +23,9 @@ The page sets a Content Security Policy that blocks network requests.
 1. Pick a page size (standard comic, webtoon strip, square, 16:9, 9:16, or custom pixels). The standard comic preset is a 6.625×10.25 page at 1325×2050 px.
 2. Set the page background, gutter width, and the optional panel border (on by default, thin and black).
 3. Choose a layout or draw your own cuts. Blank, the first layout, clears back to one full panel. If a panel has a picture, it asks first. Undo brings the panels back.
-4. Drop a PNG, JPG, or WebP onto a panel, or click an empty panel to choose a file. Drag to pan. Scroll, or use the zoom slider, to scale. Rotate with the handle above the picture, the rotation slider, or the degrees field. Shift snaps the handle to 15° steps. Rotate left or right by 90°, flip the picture horizontally or vertically, or reset the rotation. Reset framing puts the picture back to an upright cover fit. Replace or remove the image from the side panel.
-5. Add lettering: speech bubble, thought bubble, caption, or sound-effect text. Drag to move, drag handles to resize, double-click to edit. Sound effects can rotate. Delete removes the selection.
-6. Undo with Ctrl+Z and redo with Ctrl+Y (Ctrl+Shift+Z also redos).
+4. Drop a PNG, JPG, or WebP onto a panel, or click an empty panel to choose a file. Drag to pan the picture. Scroll over the selected picture, or use the zoom slider, to scale it. Ctrl+scroll over that picture zooms it toward the pointer. Alt+scroll rotates it 5° per notch, and Shift+Alt snaps those turns to 15°. You can also rotate with the handle above the picture, the rotation slider, or the degrees field. Shift snaps the handle to 15° steps. Rotate left or right by 90°, flip the picture horizontally or vertically, or reset the rotation. Reset framing puts the picture back to an upright cover fit. Replace or remove the image from the side panel.
+5. Add lettering: speech bubble, thought bubble, caption, or sound-effect text. Drag to move, drag handles to resize, double-click to edit. Ctrl+scroll resizes the selected lettering, and Alt+scroll rotates it. Delete removes the selection.
+6. Undo with Ctrl+Z and redo with Ctrl+Y (Ctrl+Shift+Z also redos). A scroll gesture is one undo step.
 7. New, in the top bar, starts a blank single panel at the current page size and clears lettering. If the page has unsaved changes, it asks first. If the image bank has pictures, it asks whether to keep the bank. Undo brings the previous page back.
 8. Save a project JSON, load it later, or export a full-resolution PNG or JPG at the page size. Export does not include selection handles or other editor chrome. The project file includes the image bank. A project saved before the bank existed still opens, with an empty bank.
 
@@ -43,7 +43,13 @@ Gutters are the gap between panels along a cut. Switch to Select and click a gut
 
 Layouts (blank, six-panel grid, three tiers, four-panel grid, splash plus two, vertical strip, slanted action) are just starter cuts, except Blank, which clears back to one panel. You can keep cutting them or remove gutters afterward.
 
+### View zoom
+
+The corner of the page has zoom out, a menu (Fit, 50%, 100%, 200%, 400%), and zoom in. Fit is the whole page in the window. 100% is actual pixels. This only changes the on-screen view. The project and the exported PNG or JPG stay at the page size. Scroll, Space+drag, or middle-mouse drag to pan when you are zoomed in. Ctrl+0 fits the page. Ctrl+1 is 100%. + and − zoom the view. Ctrl+scroll zooms the view toward the pointer, unless the pointer is over the selected picture or lettering, in which case it zooms that instead.
+
 ### Shortcuts
+
+The Shortcuts button in the top bar, or the ? key, opens the full list. Esc closes it.
 
 | Key | Action |
 | --- | --- |
@@ -56,8 +62,16 @@ Layouts (blank, six-panel grid, three tiers, four-panel grid, splash plus two, v
 | Delete / Backspace | Delete lettering, or remove the selected panel’s image |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 | Ctrl+S | Save project |
+| Ctrl+0 / Ctrl+1 | Fit the page / 100% view |
+| + / − | Zoom the view in or out |
+| Scroll | Scroll the page, or zoom the selected picture when the pointer is over it |
+| Ctrl+scroll | Zoom the view, or zoom the selected picture or lettering under the pointer |
+| Alt+scroll | Rotate the picture or selected lettering 5° per notch |
+| Shift+Alt+scroll | Rotate in 15° steps |
+| Space+drag, middle-mouse drag | Pan the view |
 | Shift | Snap a cut, tail, or rotation to a straight step |
-| Esc | Cancel a cut, or return to Select |
+| ? | Open the shortcuts panel |
+| Esc | Close shortcuts, cancel a cut, or return to Select |
 
 ## Fonts
 
