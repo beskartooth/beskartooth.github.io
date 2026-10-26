@@ -32,6 +32,8 @@
   var rotAccum = 0;
   var viewMode = "fit";
   var viewScale = 1;
+  var viewStageW = -1;
+  var viewStageH = -1;
   var spaceDown = false;
   var viewPan = null;
   var cache = new Map();
@@ -265,6 +267,13 @@
     var scale = activeScale();
     var cssW = Math.max(1, page.width * scale);
     var cssH = Math.max(1, page.height * scale);
+    var slackW = Math.max(1, stage.clientWidth);
+    var slackH = Math.max(1, stage.clientHeight);
+    var viewEl = $("view");
+    viewEl.style.width = (cssW + slackW) + "px";
+    viewEl.style.height = (cssH + slackH) + "px";
+    canvas.style.left = (slackW / 2) + "px";
+    canvas.style.top = (slackH / 2) + "px";
     canvas.style.width = cssW + "px";
     canvas.style.height = cssH + "px";
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -291,20 +300,25 @@
     stage.scrollTop = Math.max(0, (view.scrollHeight - stage.clientHeight) / 2);
   }
 
-  function setViewScale(next, anchor) {
+  function pinView(point, clientX, clientY) {
     var page = session.doc.page;
+    var stageRect = stage.getBoundingClientRect();
+    var contentX = canvas.offsetLeft + (point.x / page.width) * canvas.offsetWidth;
+    var contentY = canvas.offsetTop + (point.y / page.height) * canvas.offsetHeight;
+    stage.scrollLeft = contentX - (clientX - stageRect.left);
+    stage.scrollTop = contentY - (clientY - stageRect.top);
+  }
+
+  function setViewScale(next, anchor) {
     var point = anchor ? eventPoint(anchor) : null;
+    var clientX = anchor ? anchor.clientX : 0;
+    var clientY = anchor ? anchor.clientY : 0;
     viewMode = "scale";
     viewScale = clamp(next, 0.02, 8);
     fitCanvas();
-    if (point && anchor) {
-      var rect = canvas.getBoundingClientRect();
-      var nowX = rect.left + (point.x / page.width) * rect.width;
-      var nowY = rect.top + (point.y / page.height) * rect.height;
-      stage.scrollLeft += nowX - anchor.clientX;
-      stage.scrollTop += nowY - anchor.clientY;
-    }
+    if (point) pinView(point, clientX, clientY);
     render();
+    if (point) pinView(point, clientX, clientY);
   }
 
   function stageCenterAnchor() {
@@ -318,8 +332,8 @@
 
   function setFit() {
     viewMode = "fit";
-    stage.scrollLeft = 0;
-    stage.scrollTop = 0;
+    fitCanvas();
+    centerView();
     render();
   }
 
@@ -328,7 +342,17 @@
   }
 
   function render() {
+    var sw = stage.clientWidth;
+    var sh = stage.clientHeight;
+    var stageChanged = viewStageW > 0 && (sw !== viewStageW || sh !== viewStageH);
     fitCanvas();
+    if (viewMode === "fit" && (viewStageW < 0 || stageChanged)) centerView();
+    else if (viewMode === "scale" && stageChanged) {
+      stage.scrollLeft += (sw - viewStageW) / 2;
+      stage.scrollTop += (sh - viewStageH) / 2;
+    }
+    viewStageW = sw;
+    viewStageH = sh;
     var ctx = canvas.getContext("2d");
     var page = session.doc.page;
     ctx.setTransform(canvas.width / page.width, 0, 0, canvas.height / page.height, 0, 0);
@@ -795,7 +819,7 @@
     if (e.button !== 0 || spaceDown || viewPan) return;
     finishWheelGesture();
     if (editingId && e.target === canvas) editor.blur();
-    canvas.setPointerCapture(e.pointerId);
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* pointer already released */ }
     var pt = eventPoint(e);
     if (tool === "cut") {
       if (e.shiftKey && cutStart) pt = G.snapAxis(cutStart, pt);
