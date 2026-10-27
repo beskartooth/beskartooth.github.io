@@ -290,6 +290,37 @@
       return state.doc.panels.find(function (p) { return p.id === id; }) || null;
     }
 
+    function panelAnchor(panel) {
+      var inset = G.insetPolygon(panel, state.doc.page) || panel.points;
+      var b = G.bounds(inset);
+      return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    }
+
+    function letterFromClipboard(src, dx, dy) {
+      if (!src || typeof src.type !== "string" || !LETTER_PRESETS[src.type]) return null;
+      var letter = structuredClone(src);
+      letter.id = uid("l");
+      letter.x = (Number(src.x) || 0) + (Number(dx) || 0);
+      letter.y = (Number(src.y) || 0) + (Number(dy) || 0);
+      letter.w = Math.max(48, Number(src.w) || letter.w);
+      letter.h = Math.max(36, Number(src.h) || letter.h);
+      letter.rotation = normDeg(src.rotation || 0);
+      letter.fontSize = clamp(Number(src.fontSize) || letter.fontSize, 8, 400);
+      if (src.strokeWidth != null && isFinite(Number(src.strokeWidth))) {
+        letter.strokeWidth = clamp(Number(src.strokeWidth), 0, 80);
+      }
+      if (src.shapeStrokeWidth != null && isFinite(Number(src.shapeStrokeWidth))) {
+        letter.shapeStrokeWidth = clamp(Number(src.shapeStrokeWidth), 0, 48);
+      }
+      if (src.tail && typeof src.tail === "object") {
+        letter.tail = { dx: Number(src.tail.dx) || 0, dy: Number(src.tail.dy) || 0 };
+      } else {
+        letter.tail = null;
+      }
+      if (src.text != null) letter.text = String(src.text).slice(0, 2000);
+      return letter;
+    }
+
     function letterById(id) {
       return state.doc.letters.find(function (l) { return l.id === id; }) || null;
     }
@@ -603,6 +634,48 @@
         checkpoint();
         state.doc.letters.splice(idx, 1);
         return true;
+      },
+      panelAnchor: function (panelId) {
+        var panel = panelById(panelId);
+        if (!panel) return null;
+        return panelAnchor(panel);
+      },
+      pasteLetter: function (src, dx, dy) {
+        var created = null;
+        var ok = commitMutation(function () {
+          created = letterFromClipboard(src, dx, dy);
+          if (created) state.doc.letters.push(created);
+        });
+        return ok ? created : null;
+      },
+      pastePanelImage: function (panelId, src, dx, dy) {
+        var panel = panelById(panelId);
+        if (!panel || !src) return false;
+        var scale = clamp(Number(src.scale) || 1, 0.02, 10000);
+        var width = Math.max(1, Number(src.width) || 1);
+        var height = Math.max(1, Number(src.height) || 1);
+        var dataUrl = typeof src.dataUrl === "string" && src.dataUrl.indexOf("data:image/") === 0 ? src.dataUrl : "";
+        var knownId = src.id && state.images.has(String(src.id));
+        if (!knownId && !dataUrl) return false;
+        return commitMutation(function () {
+          var current = panelById(panelId);
+          if (!current) return;
+          var id = src.id ? String(src.id) : "";
+          if (!id || (!state.images.has(id) && !dataUrl)) id = uid("i");
+          if (!state.images.has(id)) state.images.set(id, dataUrl);
+          var anchor = panelAnchor(current);
+          current.image = {
+            id: id,
+            cx: anchor.x + (Number(src.relX) || 0) + (Number(dx) || 0),
+            cy: anchor.y + (Number(src.relY) || 0) + (Number(dy) || 0),
+            scale: scale,
+            rotation: normDeg(src.rotation || 0),
+            flipX: src.flipX === true,
+            flipY: src.flipY === true,
+            width: width,
+            height: height
+          };
+        });
       },
       toJSON: function () {
         return {

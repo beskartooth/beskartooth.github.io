@@ -23,7 +23,7 @@ The page sets a Content Security Policy that blocks network requests.
 1. Pick a page size (standard comic, webtoon strip, square, 16:9, 9:16, or custom pixels). The standard comic preset is a 6.625×10.25 page at 1325×2050 px.
 2. Set the page background, gutter width, and the optional panel border (on by default, thin and black).
 3. Choose a layout or draw your own cuts. Blank, the first layout, clears back to one full panel. If a panel has a picture, it asks first. Undo brings the panels back.
-4. Drop a PNG, JPG, or WebP onto a panel, or click an empty panel to choose a file. Drag to pan the picture. Scroll over the selected picture, or use the zoom slider, to scale it. Ctrl+scroll over that picture zooms it toward the pointer. Alt+scroll rotates it 1° per notch, and Shift+Alt snaps those turns to 15°. Ctrl+V pastes a copied image into the selected panel, or into the image bank when nothing is selected. You can also rotate with the handle above the picture, the rotation slider, or the degrees field. Shift snaps the handle to 15° steps. Rotate left or right by 90°, flip the picture horizontally or vertically, or reset the rotation. Reset framing puts the picture back to an upright cover fit. Replace or remove the image from the side panel.
+4. Drop a PNG, JPG, or WebP onto a panel, or click an empty panel to choose a file. Drag to pan the picture. Scroll over the selected picture, or use the zoom slider, to scale it. Ctrl+scroll over that picture zooms it toward the pointer. Alt+scroll rotates it 1° per notch, and Shift+Alt snaps those turns to 15°. Ctrl+C copies the selected lettering or picture, including text, colors, stroke, rotation, tail, and the picture’s pan, zoom, rotation, and flips. Ctrl+V pastes a copy nudged 16 pixels further each time and selects it. Lettering lands on the page. A picture pastes into the selected panel, keeping that framing. Ctrl+X cuts and Ctrl+D duplicates. If the system clipboard has a newer image than the last in-app copy, Ctrl+V still places that image in the selected panel, or in the bank when no panel is selected. Copy and paste stay out of text fields and the inline lettering editor. You can also rotate with the handle above the picture, the rotation slider, or the degrees field. Shift snaps the handle to 15° steps. Rotate left or right by 90°, flip the picture horizontally or vertically, or reset the rotation. Reset framing puts the picture back to an upright cover fit. Replace or remove the image from the side panel.
 5. Add lettering: speech bubble, thought bubble, caption, or sound-effect text. After you place one, the tool returns to Select. Drag to move, drag handles to resize, double-click to edit. Ctrl+scroll resizes the selected lettering, and Alt+scroll rotates it 1° per notch. Delete removes the selection.
 6. Undo with Ctrl+Z and redo with Ctrl+Y (Ctrl+Shift+Z also redos). A scroll gesture is one undo step.
 7. New, in the top bar, starts a blank single panel at the current page size and clears lettering. If the page has unsaved changes, it asks first. If the image bank has pictures, it asks whether to keep the bank. Undo brings the previous page back.
@@ -67,7 +67,9 @@ The Shortcuts button in the top bar, or the ? key, opens the full list. Esc clos
 | Scroll | Scroll the page, or zoom the selected picture when the pointer is over it |
 | Ctrl+scroll | Zoom the view, or zoom the selected picture or lettering under the pointer |
 | Alt+scroll | Rotate the picture or selected lettering 1° per notch |
-| Ctrl+V | Paste an image into the selected panel, or into the bank |
+| Ctrl+C / Ctrl+X | Copy or cut the selected lettering or picture |
+| Ctrl+V | Paste the copy (nudged each time), or a newer clipboard image into the panel or bank |
+| Ctrl+D | Duplicate the selection |
 | Shift+Alt+scroll | Rotate in 15° steps |
 | Space+drag, middle-mouse drag | Pan the view |
 | Shift | Snap a cut, tail, or rotation to a straight step |
@@ -94,6 +96,7 @@ Geometry checks (no browser needed):
 
 ```bash
 node comic-studio/test/geometry.test.cjs
+node comic-studio/test/clipboard.test.cjs
 ```
 
 ## Limits
