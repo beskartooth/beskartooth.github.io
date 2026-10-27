@@ -37,6 +37,12 @@
   var spaceDown = false;
   var viewPan = null;
   var cache = new Map();
+  var PASTE_NUDGE = 16;
+  var CLIP_PREFIX = "comic-studio-element:";
+  var CLIP_TYPE = "web application/x-comic-studio-element";
+  // Page-independent so a later multi-page document can paste the same payload.
+  // Kept off the document so New, layouts, and project load leave it in place.
+  var elementClipboard = null;
 
   var HINTS = {
     select: "Select: drag a picture to pan it, scroll to zoom it. Ctrl+scroll zooms the view. ? opens shortcuts.",
@@ -1369,6 +1375,222 @@
     render();
   }
 
+  function isTypingTarget(target) {
+    var el = target && target.nodeType === 1 ? target : target && target.parentElement;
+    if (!el || !el.closest) return false;
+    if (el.closest("input, textarea, select")) return true;
+    if (el.isContentEditable) return true;
+    var editable = el.closest("[contenteditable]");
+    return !!(editable && editable.isContentEditable);
+  }
+
+  function refreshEdited(message) {
+    propsKey = "";
+    pruneCache();
+    setStatus(message);
+    syncPageFields();
+    syncProps();
+    renderBank();
+    render();
+  }
+
+  function snapshotLetter(letter) {
+    var clone = structuredClone(letter);
+    delete clone.id;
+    return clone;
+  }
+
+  function snapshotImage(panel) {
+    var img = panel.image;
+    var anchor = session.panelAnchor(panel.id) || { x: img.cx, y: img.cy };
+    return {
+      id: img.id,
+      dataUrl: session.images.get(img.id) || "",
+      width: img.width,
+      height: img.height,
+      scale: img.scale,
+      rotation: img.rotation || 0,
+      flipX: img.flipX === true,
+      flipY: img.flipY === true,
+      relX: img.cx - anchor.x,
+      relY: img.cy - anchor.y
+    };
+  }
+
+  function writeClipMarker(clip) {
+    clip.markerWritten = false;
+    function mark() {
+      if (elementClipboard && elementClipboard.marker === clip.marker) elementClipboard.markerWritten = true;
+    }
+    function writeText() {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+      navigator.clipboard.writeText(clip.marker).then(mark).catch(function () {});
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== "undefined") {
+        var text = clip.kind === "letter" ? String(clip.letter && clip.letter.text || "") : "";
+        var payload = {};
+        payload["text/plain"] = new Blob([text], { type: "text/plain" });
+        payload[CLIP_TYPE] = new Blob([clip.marker], { type: CLIP_TYPE });
+        navigator.clipboard.write([new ClipboardItem(payload)]).then(mark).catch(writeText);
+        return;
+      }
+    } catch (err) {}
+    writeText();
+  }
+
+  function copySelection() {
+    if (!selection) {
+      setStatus("Select lettering or a picture to copy.");
+      return false;
+    }
+    var copiedAt = Date.now();
+    var clip = {
+      version: 1,
+      type: "comic-studio-element",
+      kind: "",
+      copiedAt: copiedAt,
+      marker: CLIP_PREFIX + copiedAt,
+      markerWritten: false,
+      pasteCount: 0,
+      sourcePanelId: null,
+      letter: null,
+      image: null
+    };
+    if (selection.type === "letter") {
+      var letter = letterById(selection.id);
+      if (!letter) { setStatus("Select lettering or a picture to copy."); return false; }
+      clip.kind = "letter";
+      clip.letter = snapshotLetter(letter);
+    } else if (selection.type === "panel") {
+      var panel = panelById(selection.id);
+      if (!panel || !panel.image) { setStatus("Select lettering or a picture to copy."); return false; }
+      clip.kind = "image";
+      clip.sourcePanelId = panel.id;
+      clip.image = snapshotImage(panel);
+    } else {
+      setStatus("Select lettering or a picture to copy.");
+      return false;
+    }
+    elementClipboard = clip;
+    writeClipMarker(clip);
+    setStatus(clip.kind === "letter" ? "Copied lettering." : "Copied the picture.");
+    return true;
+  }
+
+  function pasteElement() {
+    var clip = elementClipboard;
+    if (!clip) {
+      setStatus("Copy lettering or a picture first.");
+      return false;
+    }
+    var step = clip.pasteCount + 1;
+    var nudge = PASTE_NUDGE * step;
+    if (clip.kind === "letter") {
+      var letter = session.pasteLetter(clip.letter, nudge, nudge);
+      if (!letter) { setStatus("Could not paste lettering."); return false; }
+      clip.pasteCount = step;
+      select({ type: "letter", id: letter.id });
+      refreshEdited("Pasted lettering.");
+      return true;
+    }
+    var targetId = null;
+    if (selection && selection.type === "panel" && panelById(selection.id)) targetId = selection.id;
+    else if (clip.sourcePanelId && panelById(clip.sourcePanelId)) targetId = clip.sourcePanelId;
+    else if (session.doc.panels.length === 1) targetId = session.doc.panels[0].id;
+    if (!targetId) {
+      setStatus("Select a panel to paste the picture.");
+      return false;
+    }
+    if (!session.pastePanelImage(targetId, clip.image, nudge, nudge)) {
+      setStatus("Could not paste the picture.");
+      return false;
+    }
+    clip.pasteCount = step;
+    select({ type: "panel", id: targetId });
+    var same = targetId === clip.sourcePanelId;
+    refreshEdited(same ? "Pasted the picture, nudged so you can see it." : "Pasted the picture into this panel.");
+    return true;
+  }
+
+  function cutSelection() {
+    if (!copySelection()) return;
+    var clip = elementClipboard;
+    if (clip.kind === "letter") {
+      var id = selection && selection.type === "letter" ? selection.id : null;
+      if (!id || !session.deleteLetter(id)) return;
+      selection = null;
+      refreshEdited("Cut lettering.");
+      return;
+    }
+    if (!clip.sourcePanelId || !session.removeImage(clip.sourcePanelId)) return;
+    refreshEdited("Cut the picture from the panel.");
+  }
+
+  function duplicateSelection() {
+    if (!copySelection()) return;
+    if (!pasteElement()) return;
+    var clip = elementClipboard;
+    setStatus(clip && clip.kind === "letter" ? "Duplicated lettering." : "Duplicated the picture.");
+  }
+
+  function clipboardFiles(data) {
+    var files = [];
+    if (!data) return files;
+    var items = data.items;
+    if (items) {
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].kind !== "file") continue;
+        var file = items[i].getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (!files.length && data.files) {
+      for (var j = 0; j < data.files.length; j++) files.push(data.files[j]);
+    }
+    return imageFiles(files);
+  }
+
+  function clipboardMarker(data) {
+    if (!data || !data.getData) return "";
+    var types = [];
+    try { types = data.types ? Array.prototype.slice.call(data.types) : []; } catch (err) { types = []; }
+    var names = [CLIP_TYPE, "application/x-comic-studio-element"];
+    for (var i = 0; i < names.length; i++) {
+      if (types.indexOf(names[i]) === -1) continue;
+      var value = data.getData(names[i]) || "";
+      if (value) return String(value).trim();
+    }
+    var text = "";
+    try { text = data.getData("text/plain") || ""; } catch (err2) { text = ""; }
+    text = String(text).trim();
+    if (text.indexOf(CLIP_PREFIX) === 0) return text;
+    return "";
+  }
+
+  function externalImageWins(files, marker) {
+    if (!files.length) return false;
+    var clip = elementClipboard;
+    if (clip && marker && marker === clip.marker) return false;
+    if (!clip) return true;
+    if (clip.markerWritten) return true;
+    var newest = 0;
+    files.forEach(function (file) {
+      if (file.lastModified > newest) newest = file.lastModified;
+    });
+    return newest > clip.copiedAt;
+  }
+
+  function pasteClipboardImages(files) {
+    var panelId = selection && selection.type === "panel" ? selection.id : null;
+    readImageFiles(files).then(function (infos) {
+      infos.forEach(function (info, index) {
+        if (!info.name) info.name = "Pasted image" + (infos.length > 1 ? " " + (index + 1) : "");
+      });
+      finishBankAdd(infos, panelId, files.length);
+    });
+  }
+
   function deleteSelection() {
     if (!selection) return;
     if (selection.type === "letter") {
@@ -1661,7 +1883,7 @@
       return;
     }
     if (e.key === "Escape" && editingId) return;
-    var typing = e.target && (e.target.matches("input, textarea, select"));
+    var typing = isTypingTarget(e.target);
     var key = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && key === "z") {
       if (typing) return;
@@ -1719,7 +1941,15 @@
     } else if (e.key === "Escape") {
       if (cutStart) { cutStart = null; cutCursor = null; setStatus("Cut cancelled."); render(); }
       else setTool("select");
+    } else if ((e.ctrlKey || e.metaKey) && !e.altKey && (key === "c" || key === "x" || key === "d")) {
+      if (editingId) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      if (key === "c") copySelection();
+      else if (key === "x") cutSelection();
+      else duplicateSelection();
     } else if ((e.ctrlKey || e.metaKey) && key === "v") {
+      if (editingId) return;
       return;
     } else if (key === "v") setTool("select");
     else if (key === "c") setTool("cut");
@@ -1731,32 +1961,18 @@
 
   document.addEventListener("paste", function (e) {
     if (!$("confirm").hidden || !$("shortcuts").hidden) return;
-    var typing = e.target && e.target.matches && e.target.matches("input, textarea, select");
-    if (typing || editingId) return;
+    if (isTypingTarget(e.target) || editingId) return;
     var data = e.clipboardData;
-    if (!data) return;
-    var files = [];
-    var items = data.items;
-    if (items) {
-      for (var i = 0; i < items.length; i++) {
-        if (items[i].kind !== "file") continue;
-        var file = items[i].getAsFile();
-        if (file) files.push(file);
-      }
+    var files = clipboardFiles(data);
+    var marker = clipboardMarker(data);
+    if (externalImageWins(files, marker)) {
+      e.preventDefault();
+      pasteClipboardImages(files);
+      return;
     }
-    if (!files.length && data.files) {
-      for (var j = 0; j < data.files.length; j++) files.push(data.files[j]);
-    }
-    files = imageFiles(files);
-    if (!files.length) return;
+    if (!elementClipboard) return;
     e.preventDefault();
-    var panelId = selection && selection.type === "panel" ? selection.id : null;
-    readImageFiles(files).then(function (infos) {
-      infos.forEach(function (info, index) {
-        if (!info.name) info.name = "Pasted image" + (infos.length > 1 ? " " + (index + 1) : "");
-      });
-      finishBankAdd(infos, panelId, files.length);
-    });
+    pasteElement();
   });
 
   var bankEpoch = 0;
