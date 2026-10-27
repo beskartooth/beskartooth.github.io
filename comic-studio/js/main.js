@@ -1529,7 +1529,9 @@
 
   function duplicateSelection() {
     if (!copySelection()) return;
-    pasteElement();
+    if (!pasteElement()) return;
+    var clip = elementClipboard;
+    setStatus(clip && clip.kind === "letter" ? "Duplicated lettering." : "Duplicated the picture.");
   }
 
   function clipboardFiles(data) {
