@@ -32,7 +32,15 @@
     { id: "Comic Neue|400|italic", family: "Comic Neue", weight: 400, style: "italic", label: "Comic Neue Italic" },
     { id: "Comic Neue|400|normal", family: "Comic Neue", weight: 400, style: "normal", label: "Comic Neue" },
     { id: "Bangers|400|normal", family: "Bangers", weight: 400, style: "normal", label: "Bangers" },
-    { id: "Lilita One|400|normal", family: "Lilita One", weight: 400, style: "normal", label: "Lilita One" }
+    { id: "Lilita One|400|normal", family: "Lilita One", weight: 400, style: "normal", label: "Lilita One" },
+    { id: "Anton|400|normal", family: "Anton", weight: 400, style: "normal", label: "Anton" },
+    { id: "Bungee|400|normal", family: "Bungee", weight: 400, style: "normal", label: "Bungee" },
+    { id: "Titan One|400|normal", family: "Titan One", weight: 400, style: "normal", label: "Titan One" },
+    { id: "Alfa Slab One|400|normal", family: "Alfa Slab One", weight: 400, style: "normal", label: "Alfa Slab One" },
+    { id: "Shrikhand|400|normal", family: "Shrikhand", weight: 400, style: "normal", label: "Shrikhand" },
+    { id: "Creepster|400|normal", family: "Creepster", weight: 400, style: "normal", label: "Creepster" },
+    { id: "Patrick Hand|400|normal", family: "Patrick Hand", weight: 400, style: "normal", label: "Patrick Hand" },
+    { id: "Kalam|400|normal", family: "Kalam", weight: 400, style: "normal", label: "Kalam" }
   ];
 
   var LETTER_PRESETS = {
@@ -323,6 +331,33 @@
 
     function letterById(id) {
       return state.doc.letters.find(function (l) { return l.id === id; }) || null;
+    }
+
+    function paintLetterStyle(letter, style) {
+      if (!style) return;
+      if (style.type && LETTER_PRESETS[style.type]) letter.type = style.type;
+      if (typeof style.font === "string" && style.font) letter.font = style.font;
+      if (style.fontStyle === "italic" || style.fontStyle === "normal") letter.fontStyle = style.fontStyle;
+      if (style.fontWeight) letter.fontWeight = Number(style.fontWeight) || letter.fontWeight;
+      if (style.fontSize != null && isFinite(Number(style.fontSize))) {
+        letter.fontSize = clamp(Number(style.fontSize), 8, 400);
+      }
+      if (style.strokeWidth != null && isFinite(Number(style.strokeWidth))) {
+        letter.strokeWidth = clamp(Number(style.strokeWidth), 0, 80);
+      }
+      if (style.shapeStrokeWidth != null && isFinite(Number(style.shapeStrokeWidth))) {
+        letter.shapeStrokeWidth = clamp(Number(style.shapeStrokeWidth), 0, 48);
+      }
+      if (style.rotation != null && isFinite(Number(style.rotation))) letter.rotation = normDeg(style.rotation);
+      ["fill", "stroke", "shapeFill", "shapeStroke"].forEach(function (k) {
+        if (isHex(style[k])) letter[k] = style[k];
+      });
+      if (letter.type === "caption" || letter.type === "sfx") letter.tail = null;
+      else if (style.tail && typeof style.tail === "object") {
+        letter.tail = { dx: Number(style.tail.dx) || 0, dy: Number(style.tail.dy) || 0 };
+      } else if (!letter.tail && LETTER_PRESETS[letter.type] && LETTER_PRESETS[letter.type].tail) {
+        letter.tail = structuredClone(LETTER_PRESETS[letter.type].tail);
+      }
     }
 
     blank();
@@ -627,6 +662,31 @@
         letter.h = Math.max(36, letter.h);
         letter.fontSize = clamp(letter.fontSize, 8, 400);
         letter.rotation = ((letter.rotation + 180) % 360 + 360) % 360 - 180;
+      },
+      applyLetterStyle: function (id, style) {
+        if (!letterById(id) || !style) return false;
+        return commitMutation(function () {
+          var current = letterById(id);
+          if (!current) return;
+          paintLetterStyle(current, style);
+        });
+      },
+      addStyledLetter: function (style) {
+        var type = style && LETTER_PRESETS[style.type] ? style.type : "bubble";
+        var preset = LETTER_PRESETS[type];
+        var page = state.doc.page;
+        var letter = structuredClone(preset);
+        letter.id = uid("l");
+        letter.w = preset.w;
+        letter.h = preset.h;
+        letter.x = Math.round((page.width - letter.w) / 2);
+        letter.y = Math.round((page.height - letter.h) / 2);
+        letter.text = preset.text;
+        paintLetterStyle(letter, style || {});
+        letter.text = preset.text;
+        checkpoint();
+        state.doc.letters.push(letter);
+        return letter;
       },
       deleteLetter: function (id) {
         var idx = state.doc.letters.findIndex(function (l) { return l.id === id; });

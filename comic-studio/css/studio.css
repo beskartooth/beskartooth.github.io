@@ -33,6 +33,62 @@
   font-style: normal;
   font-display: swap;
 }
+@font-face {
+  font-family: "Anton";
+  src: url("../fonts/anton/Anton-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Bungee";
+  src: url("../fonts/bungee/Bungee-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Titan One";
+  src: url("../fonts/titan-one/TitanOne-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Alfa Slab One";
+  src: url("../fonts/alfa-slab-one/AlfaSlabOne-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Shrikhand";
+  src: url("../fonts/shrikhand/Shrikhand-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Creepster";
+  src: url("../fonts/creepster/Creepster-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Patrick Hand";
+  src: url("../fonts/patrick-hand/PatrickHand-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Kalam";
+  src: url("../fonts/kalam/Kalam-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   --bg: #12141a;
@@ -63,7 +119,7 @@ button { cursor: pointer; }
   height: 100%;
   min-width: 980px;
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr) auto 36px;
+  grid-template-rows: 58px minmax(0, 1fr) auto auto;
 }
 
 #top, #tools, #props, #status {
@@ -283,14 +339,63 @@ label .deg input { width: 5.5rem; }
 
 #foot {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 14px;
+  flex-direction: column;
   border-top: 1px solid var(--line);
   background: var(--rail);
   color: var(--muted);
   font-size: 12px;
 }
+.foot-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 36px;
+  padding: 0 14px;
+}
+#tipbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+#tipbar .tip-k { color: var(--accent); font-weight: 700; }
+#tip-text { flex: 1; min-width: 0; }
+#tipbar button { padding: 2px 8px; font-size: 12px; }
+.styles-block { margin-top: 12px; }
+.styles-block summary {
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+.style-save, .style-row { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+.style-save input, .style-row input { flex: 1; min-width: 0; }
+.style-row .style-apply { flex: 1; text-align: left; }
+.style-row .mini { flex: 0 0 auto; padding: 4px 7px; }
+.tour-target { outline: 2px solid var(--accent); outline-offset: 3px; }
+#tour {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 32px));
+}
+.tour-card {
+  background: #21262f;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+#tour-title { margin: 0 0 6px; font-weight: 700; }
+#tour-body { margin: 0 0 12px; color: var(--muted); line-height: 1.4; }
+.tour-actions, .shortcuts-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.shortcuts-actions { margin-top: 8px; }
 #status { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #privacy { margin-right: auto; }
 #meta { color: var(--muted); white-space: nowrap; }
