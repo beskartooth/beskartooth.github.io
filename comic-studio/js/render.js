@@ -441,13 +441,11 @@
   var fontsReady = null;
   function ensureFonts() {
     if (!fontsReady) {
-      fontsReady = Promise.all([
-        document.fonts.load("400 16px \"Comic Neue\""),
-        document.fonts.load("700 16px \"Comic Neue\""),
-        document.fonts.load("italic 400 16px \"Comic Neue\""),
-        document.fonts.load("400 16px Bangers"),
-        document.fonts.load("400 16px \"Lilita One\"")
-      ]).then(function () { return document.fonts.ready; });
+      var families = (window.ComicStudioDocument && window.ComicStudioDocument.FONTS) || [];
+      fontsReady = Promise.all(families.map(function (item) {
+        var style = item.style === "italic" ? "italic" : "normal";
+        return document.fonts.load(style + " " + (item.weight || 400) + " 16px \"" + item.family + "\"");
+      })).then(function () { return document.fonts.ready; });
     }
     return fontsReady;
   }

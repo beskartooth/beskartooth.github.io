@@ -103,9 +103,17 @@
     <div id="bank-tray"></div>
   </section>
   <footer id="foot">
-    <span id="status" role="status"></span>
-    <span id="privacy">On this device only. Images are never uploaded.</span>
-    <span id="meta"></span>
+    <div id="tipbar">
+      <span class="tip-k">Tip:</span>
+      <span id="tip-text"></span>
+      <button type="button" id="tip-next">Next</button>
+      <button type="button" id="tip-hide">Hide</button>
+    </div>
+    <div class="foot-row">
+      <span id="status" role="status"></span>
+      <span id="privacy">On this device only. Images are never uploaded.</span>
+      <span id="meta"></span>
+    </div>
   </footer>
 </div>
 <textarea id="editor" aria-label="Lettering text" spellcheck="false"></textarea>
@@ -157,6 +165,7 @@
         <p><kbd>Ctrl</kbd>+<kbd>Scroll</kbd> Resize the selected lettering</p>
         <p><kbd>Alt</kbd>+<kbd>Scroll</kbd> Rotate it 1° (Shift snaps to 15°)</p>
         <p><kbd>Delete</kbd> Remove it</p>
+        <p>Save style keeps the look. One click applies it, or places a new item</p>
       </section>
       <section>
         <h3>Editing</h3>
@@ -171,6 +180,20 @@
         <p><kbd>Esc</kbd> Close this panel, cancel a cut, or return to Select</p>
         <p><kbd>?</kbd> Open this panel</p>
       </section>
+    </div>
+    <div class="shortcuts-actions">
+      <button type="button" id="tips-show">Show tips</button>
+      <button type="button" id="tour-replay">Replay the intro tour</button>
+    </div>
+  </div>
+</div>
+<div id="tour" hidden>
+  <div class="tour-card" role="dialog" aria-labelledby="tour-title">
+    <p id="tour-title"></p>
+    <p id="tour-body"></p>
+    <div class="tour-actions">
+      <button type="button" id="tour-skip">Skip</button>
+      <button type="button" id="tour-next" class="primary">Next</button>
     </div>
   </div>
 </div>

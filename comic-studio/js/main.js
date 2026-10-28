@@ -438,6 +438,7 @@
       p.className = "hint";
       p.textContent = "Nothing selected. Click a panel or a piece of lettering.";
       selProps.appendChild(p);
+      appendStyles(selProps, false);
       return;
     }
     if (selection.type === "panel") buildPanelProps();
@@ -617,6 +618,7 @@
       }));
     }
     selProps.appendChild(actions);
+    appendStyles(selProps, false);
   }
 
   function buildLetterProps() {
@@ -731,6 +733,7 @@
       render();
     }));
     selProps.appendChild(actions);
+    appendStyles(selProps, true);
   }
 
   function clampLetter(letter) {
@@ -1328,10 +1331,11 @@
   }
 
   function saveProject() {
-    var json = JSON.stringify(session.toJSON());
-    downloadBlob(new Blob([json], { type: "application/json" }), "comic-studio-project.json");
+    var data = session.toJSON();
+    data.styles = styles.map(function (style) { return Object.assign({}, style); });
+    downloadBlob(new Blob([JSON.stringify(data)], { type: "application/json" }), "comic-studio-project.json");
     session.markClean();
-    setStatus("Project saved on this device. It contains your page and image bank.");
+    setStatus("Project saved on this device. It contains your page, image bank, and lettering styles.");
   }
 
   function exportPage(mime) {
@@ -1691,7 +1695,9 @@
     var reader = new FileReader();
     reader.onload = function () {
       try {
-        session.loadJSON(String(reader.result));
+        var project = JSON.parse(String(reader.result));
+        session.loadJSON(project);
+        mergeStyles(project.styles);
         selection = null;
         cutStart = null;
         preview = null;
@@ -1873,8 +1879,317 @@
     zoomViewBy(Math.exp(-wheelPixels(e) * 0.0004), e);
   }, { passive: false });
 
+  var STYLE_KEY = "comic-studio-styles";
+  var TIP_KEY = "comic-studio-tips";
+  var TIP_INDEX_KEY = "comic-studio-tip-index";
+  var TOUR_KEY = "comic-studio-tour";
+  var TIPS = [
+    "Save a page as a template: keep the layout, bubbles, and sound effects, then swap in new pictures.",
+    "Ctrl+V pastes a copied image into the selected panel.",
+    "Ctrl+C then Ctrl+V copies bubbles and sound effects with all their styling.",
+    "Ctrl+D duplicates the selected item.",
+    "Alt+scroll rotates. Shift+Alt snaps to 15°.",
+    "Ctrl+scroll over a picture zooms it toward the pointer.",
+    "Hold Shift while cutting to snap the cut straight.",
+    "Click a gutter to merge the panels it separates.",
+    "Ctrl+0 fits the page. Ctrl+1 is 100%.",
+    "Drop pictures in the image bank, then drag them onto any panel.",
+    "Press ? to open every shortcut.",
+    "Save style keeps a favorite sound-effect look so you can use it again."
+  ];
+  var TOUR = [
+    {
+      title: "1 of 4 · Cuts and layouts",
+      body: "Use Cut to split a panel. Layouts drop in a starter grid. Hold Shift to snap a cut straight.",
+      targets: ["#tools"]
+    },
+    {
+      title: "2 of 4 · Pictures",
+      body: "Drop a picture on a panel, or add it to the image bank and drag the thumbnail over.",
+      targets: ["#bank", "#stage"]
+    },
+    {
+      title: "3 of 4 · Lettering",
+      body: "Pick a speech bubble, thought, caption, or sound effect, then drag on the page. Double-click the words to edit them.",
+      targets: [".tool[data-tool='bubble']", ".tool[data-tool='thought']", ".tool[data-tool='caption']", ".tool[data-tool='sfx']"]
+    },
+    {
+      title: "4 of 4 · Save and shortcuts",
+      body: "Save keeps this page on your device. Shortcuts lists every key. You can replay this tour from that panel.",
+      targets: ["#save", "#shortcuts-open"]
+    }
+  ];
+  var BUILTIN_STYLES = [
+    {
+      id: "style-impact", name: "Impact SFX", type: "sfx",
+      font: "Anton", fontWeight: 400, fontStyle: "normal", fontSize: 120,
+      fill: "#ffe14a", stroke: "#141414", strokeWidth: 16,
+      shapeFill: "#ffffff", shapeStroke: "#161616", shapeStrokeWidth: 0,
+      rotation: -6, tail: null
+    },
+    {
+      id: "style-whisper", name: "Whisper", type: "thought",
+      font: "Comic Neue", fontWeight: 400, fontStyle: "italic", fontSize: 28,
+      fill: "#5c6570", stroke: "#ffffff", strokeWidth: 0,
+      shapeFill: "#f4f7fb", shapeStroke: "#9aa3ad", shapeStrokeWidth: 3,
+      rotation: 0, tail: { dx: -16, dy: 180 }
+    },
+    {
+      id: "style-shout", name: "Shout", type: "bubble",
+      font: "Bungee", fontWeight: 400, fontStyle: "normal", fontSize: 52,
+      fill: "#fffdf8", stroke: "#ffffff", strokeWidth: 0,
+      shapeFill: "#c42727", shapeStroke: "#5c1010", shapeStrokeWidth: 7,
+      rotation: -4, tail: { dx: 70, dy: 190 }
+    },
+    {
+      id: "style-narration", name: "Narration caption", type: "caption",
+      font: "Kalam", fontWeight: 400, fontStyle: "normal", fontSize: 32,
+      fill: "#2a241c", stroke: "#f3ead7", strokeWidth: 0,
+      shapeFill: "#f3ead7", shapeStroke: "#2a241c", shapeStrokeWidth: 3,
+      rotation: 0, tail: null
+    }
+  ];
+  var styles = loadStyles();
+  var tourStep = 0;
+
+  function storageGet(key) {
+    try { return localStorage.getItem(key); } catch (err) { return null; }
+  }
+  function storageSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (err) {}
+  }
+  function styleHex(value, fallback) {
+    return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+  }
+  function normalizeStyle(raw) {
+    if (!raw || typeof raw.name !== "string" || !raw.name.trim()) return null;
+    if (!Doc.LETTER_PRESETS[raw.type]) return null;
+    return {
+      id: String(raw.id || ("style-" + Date.now().toString(36))),
+      name: raw.name.trim().slice(0, 40),
+      type: raw.type,
+      font: typeof raw.font === "string" && raw.font ? raw.font : "Comic Neue",
+      fontWeight: Number(raw.fontWeight) || 400,
+      fontStyle: raw.fontStyle === "italic" ? "italic" : "normal",
+      fontSize: Math.max(8, Math.min(400, Number(raw.fontSize) || 32)),
+      fill: styleHex(raw.fill, "#1c1c1c"),
+      stroke: styleHex(raw.stroke, "#ffffff"),
+      strokeWidth: Math.max(0, Math.min(80, Number(raw.strokeWidth) || 0)),
+      shapeFill: styleHex(raw.shapeFill, "#ffffff"),
+      shapeStroke: styleHex(raw.shapeStroke, "#161616"),
+      shapeStrokeWidth: Math.max(0, Math.min(48, Number(raw.shapeStrokeWidth) || 0)),
+      rotation: Number(raw.rotation) || 0,
+      tail: raw.tail && typeof raw.tail === "object" ? { dx: Number(raw.tail.dx) || 0, dy: Number(raw.tail.dy) || 0 } : null
+    };
+  }
+  function loadStyles() {
+    var raw = storageGet(STYLE_KEY);
+    if (raw == null) return BUILTIN_STYLES.map(function (style) { return normalizeStyle(style); });
+    try {
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return BUILTIN_STYLES.map(function (style) { return normalizeStyle(style); });
+      return parsed.map(normalizeStyle).filter(Boolean);
+    } catch (err) {
+      return BUILTIN_STYLES.map(function (style) { return normalizeStyle(style); });
+    }
+  }
+  function persistStyles() {
+    storageSet(STYLE_KEY, JSON.stringify(styles));
+  }
+  function mergeStyles(incoming) {
+    if (!Array.isArray(incoming)) return;
+    incoming.forEach(function (raw) {
+      var style = normalizeStyle(raw);
+      if (!style) return;
+      var idx = -1;
+      for (var i = 0; i < styles.length; i++) if (styles[i].id === style.id) idx = i;
+      if (idx >= 0) styles[idx] = style;
+      else styles.push(style);
+    });
+    persistStyles();
+  }
+  function styleFromLetter(letter, name) {
+    return normalizeStyle({
+      id: "style-" + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36),
+      name: name,
+      type: letter.type,
+      font: letter.font,
+      fontWeight: letter.fontWeight,
+      fontStyle: letter.fontStyle,
+      fontSize: letter.fontSize,
+      fill: letter.fill,
+      stroke: letter.stroke,
+      strokeWidth: letter.strokeWidth,
+      shapeFill: letter.shapeFill,
+      shapeStroke: letter.shapeStroke,
+      shapeStrokeWidth: letter.shapeStrokeWidth,
+      rotation: letter.rotation || 0,
+      tail: letter.tail ? { dx: letter.tail.dx, dy: letter.tail.dy } : null
+    });
+  }
+  function appendStyles(host, canSave) {
+    var box = document.createElement("details");
+    box.className = "styles-block";
+    box.open = canSave || !selection;
+    var summary = document.createElement("summary");
+    summary.textContent = "Styles";
+    box.appendChild(summary);
+    if (canSave) {
+      var saveRow = document.createElement("div");
+      saveRow.className = "style-save";
+      var name = document.createElement("input");
+      name.type = "text";
+      name.maxLength = 40;
+      name.value = "My style";
+      name.setAttribute("aria-label", "Style name");
+      saveRow.appendChild(name);
+      saveRow.appendChild(button("Save style", "", function () {
+        var letter = selection && letterById(selection.id);
+        if (!letter) return;
+        var label = name.value.trim() || "My style";
+        var made = styleFromLetter(letter, label);
+        if (!made) return;
+        styles.push(made);
+        persistStyles();
+        setStatus("Saved style “" + label + "”.");
+        propsKey = "";
+        syncProps();
+      }));
+      box.appendChild(saveRow);
+    }
+    if (!styles.length) {
+      var empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "No saved styles yet.";
+      box.appendChild(empty);
+    }
+    styles.forEach(function (style) {
+      var row = document.createElement("div");
+      row.className = "style-row";
+      var apply = button(style.name, "style-apply", function () {
+        if (selection && selection.type === "letter" && letterById(selection.id)) {
+          session.applyLetterStyle(selection.id, style);
+          propsKey = "";
+          syncProps();
+          render();
+          setStatus("Applied “" + style.name + "”.");
+          return;
+        }
+        var created = session.addStyledLetter(style);
+        if (!created) return;
+        select({ type: "letter", id: created.id });
+        setTool("select");
+        propsKey = "";
+        syncProps();
+        render();
+        setStatus("Placed “" + style.name + "”.");
+      });
+      row.appendChild(apply);
+      row.appendChild(button("Rename", "mini", function () {
+        var input = document.createElement("input");
+        input.type = "text";
+        input.maxLength = 40;
+        input.value = style.name;
+        input.setAttribute("aria-label", "Rename style");
+        apply.replaceWith(input);
+        input.focus();
+        input.select();
+        var done = false;
+        function commit(keep) {
+          if (done) return;
+          done = true;
+          if (keep) {
+            var next = input.value.trim();
+            if (next) style.name = next.slice(0, 40);
+            persistStyles();
+          }
+          propsKey = "";
+          syncProps();
+        }
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); commit(true); }
+          else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); commit(false); }
+        });
+        input.addEventListener("blur", function () { commit(true); });
+      }));
+      row.appendChild(button("Delete", "mini danger", function () {
+        styles = styles.filter(function (item) { return item.id !== style.id; });
+        persistStyles();
+        propsKey = "";
+        syncProps();
+        setStatus("Deleted “" + style.name + "”.");
+      }));
+      box.appendChild(row);
+    });
+    host.appendChild(box);
+  }
+  function showTip() {
+    var bar = $("tipbar");
+    if (storageGet(TIP_KEY) === "0") { bar.hidden = true; return; }
+    var index = Number(storageGet(TIP_INDEX_KEY)) || 0;
+    if (index < 0 || index >= TIPS.length) index = 0;
+    $("tip-text").textContent = TIPS[index];
+    bar.hidden = false;
+  }
+  function clearTourMarks() {
+    document.querySelectorAll(".tour-target").forEach(function (el) { el.classList.remove("tour-target"); });
+  }
+  function finishTour() {
+    clearTourMarks();
+    $("tour").hidden = true;
+    storageSet(TOUR_KEY, "1");
+  }
+  function showTourStep() {
+    clearTourMarks();
+    var step = TOUR[tourStep];
+    $("tour-title").textContent = step.title;
+    $("tour-body").textContent = step.body;
+    $("tour-next").textContent = tourStep === TOUR.length - 1 ? "Done" : "Next";
+    step.targets.forEach(function (selector) {
+      document.querySelectorAll(selector).forEach(function (el) { el.classList.add("tour-target"); });
+    });
+    $("tour").hidden = false;
+  }
+  function startTour() {
+    tourStep = 0;
+    closeShortcuts();
+    showTourStep();
+  }
+  function maybeStartTour() {
+    if (storageGet(TOUR_KEY) === "1") return;
+    startTour();
+  }
+  showTip();
+  persistStyles();
+  $("tip-next").addEventListener("click", function () {
+    var index = (Number(storageGet(TIP_INDEX_KEY)) || 0) + 1;
+    if (index >= TIPS.length) index = 0;
+    storageSet(TIP_INDEX_KEY, String(index));
+    showTip();
+  });
+  $("tip-hide").addEventListener("click", function () {
+    storageSet(TIP_KEY, "0");
+    $("tipbar").hidden = true;
+  });
+  $("tour-skip").addEventListener("click", finishTour);
+  $("tour-next").addEventListener("click", function () {
+    if (tourStep >= TOUR.length - 1) finishTour();
+    else { tourStep += 1; showTourStep(); }
+  });
+  $("tips-show").addEventListener("click", function () {
+    storageSet(TIP_KEY, "1");
+    showTip();
+    closeShortcuts();
+  });
+  $("tour-replay").addEventListener("click", startTour);
+
   document.addEventListener("keydown", function (e) {
     if (!$("confirm").hidden) return;
+    if (!$("tour").hidden && e.key === "Escape") {
+      e.preventDefault();
+      finishTour();
+      return;
+    }
     if (!$("shortcuts").hidden) {
       if (e.key === "Escape" || e.key === "?") {
         e.preventDefault();
@@ -2265,6 +2580,7 @@
   };
 
   R.ensureFonts().then(render);
+  maybeStartTour();
   setTool("select");
   syncPageFields();
   syncProps();

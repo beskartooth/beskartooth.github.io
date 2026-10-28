@@ -74,6 +74,10 @@ The Shortcuts button in the top bar, or the ? key, opens the full list. Esc clos
 | Space+drag, middle-mouse drag | Pan the view |
 | Shift | Snap a cut, tail, or rotation to a straight step |
 | ? | Open the shortcuts panel |
+
+A tip line under the page suggests one short trick at a time. Next moves to the next tip. Hide stores “don’t show tips” on this device. The first visit shows a short tour of cuts, pictures, and lettering, then points at Save and Shortcuts. Skip closes it. Replay it from the Shortcuts panel.
+
+Select lettering and choose Save style to keep the font, size, colors, outline, rotation, and bubble styling without the words or the position. The Styles list applies that look to the selection, or places a new item. Rename and delete are on each row. Styles stay on this device and are also stored in the project file. Opening a project merges its styles with the ones already saved here. Impact SFX, Whisper, Shout, and Narration caption are built in the first time.
 | Esc | Close shortcuts, cancel a cut, or return to Select |
 
 ## Fonts
@@ -83,6 +87,14 @@ These open-licensed fonts are stored in this folder. Licenses are SIL Open Font 
 - Comic Neue — Craig Rozynski and contributors (`fonts/comic-neue/OFL.txt`)
 - Bangers — Vernon Adams and contributors (`fonts/bangers/OFL.txt`)
 - Lilita One — Juan Montoreano and contributors (`fonts/lilita-one/OFL.txt`)
+- Anton — The Anton Project Authors (`fonts/anton/OFL.txt`)
+- Bungee — The Bungee Project Authors (`fonts/bungee/OFL.txt`)
+- Titan One — Rodrigo Fuenzalida (`fonts/titan-one/OFL.txt`)
+- Alfa Slab One — JM Solé (`fonts/alfa-slab-one/OFL.txt`)
+- Shrikhand — Jonny Pinhorn (`fonts/shrikhand/OFL.txt`)
+- Creepster — Font Diner (`fonts/creepster/OFL.txt`)
+- Patrick Hand — Patrick Wagesreiter (`fonts/patrick-hand/OFL.txt`)
+- Kalam — Indian Type Foundry (`fonts/kalam/OFL.txt`)
 
 ## Local preview
 
@@ -97,6 +109,7 @@ Geometry checks (no browser needed):
 ```bash
 node comic-studio/test/geometry.test.cjs
 node comic-studio/test/clipboard.test.cjs
+node comic-studio/test/styles.test.cjs
 ```
 
 ## Limits
