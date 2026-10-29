@@ -488,9 +488,27 @@
     }
     if (opts.cutHandles && opts.cutHandles.length) {
       ctx.save();
-      ctx.fillStyle = "#e2a23a";
       opts.cutHandles.forEach(function (p) {
-        ctx.fillRect(p.x - 4 * unit, p.y - 4 * unit, 8 * unit, 8 * unit);
+        var r = 7 * unit;
+        if (p.kind === "x") {
+          ctx.strokeStyle = "#e36b5d";
+          ctx.lineWidth = 2 * unit;
+          ctx.beginPath();
+          ctx.moveTo(p.x - r, p.y - r);
+          ctx.lineTo(p.x + r, p.y + r);
+          ctx.moveTo(p.x + r, p.y - r);
+          ctx.lineTo(p.x - r, p.y + r);
+          ctx.stroke();
+          return;
+        }
+        ctx.beginPath();
+        if (p.kind === "mid") ctx.arc(p.x, p.y, r * 0.75, 0, Math.PI * 2);
+        else ctx.rect(p.x - r, p.y - r, r * 2, r * 2);
+        ctx.fillStyle = "#fff";
+        ctx.strokeStyle = "#e2a23a";
+        ctx.lineWidth = 2 * unit;
+        ctx.fill();
+        ctx.stroke();
       });
       ctx.restore();
     }

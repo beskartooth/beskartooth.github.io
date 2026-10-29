@@ -625,30 +625,58 @@
       },
       cutPolyline: function (points) {
         if (!points || points.length < 2) return false;
+        var pts = points.map(function (p) { return { x: p.x, y: p.y }; });
+        pts[0] = G.snapToEdge(state.doc.panels, pts[0], 10);
+        pts[pts.length - 1] = G.snapToEdge(state.doc.panels, pts[pts.length - 1], 10);
         var cutId = uid("c");
-        var panels = state.doc.panels;
-        var count = 0;
-        for (var i = 0; i < points.length - 1; i++) {
-          if (Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y) < 8) continue;
-          var res = G.applyCut(panels, points[i], points[i + 1], cutId);
-          if (!res.count) continue;
-          count += res.count;
-          var seen = new Set();
-          panels = res.panels.map(function (p) {
-            var copy = {
-              id: p.id,
-              points: p.points.map(function (pt) { return { x: pt.x, y: pt.y }; }),
-              edgeCuts: p.edgeCuts.slice(),
-              image: p.image ? Object.assign({}, p.image) : null
-            };
-            if (!copy.id || seen.has(copy.id)) copy.id = uid("p");
-            seen.add(copy.id);
-            return copy;
-          });
-        }
-        if (!count) return false;
+        var res = G.applyPolyline(state.doc.panels, pts, cutId);
+        if (!res.count) return false;
+        var seen = new Set();
+        var panels = res.panels.map(function (p) {
+          var copy = {
+            id: p.id,
+            points: p.points.map(function (pt) { return { x: pt.x, y: pt.y }; }),
+            edgeCuts: p.edgeCuts.slice(),
+            image: p.image ? Object.assign({}, p.image) : null
+          };
+          if (!copy.id || seen.has(copy.id)) copy.id = uid("p");
+          seen.add(copy.id);
+          return copy;
+        });
         checkpoint();
         state.doc.panels = panels;
+        return true;
+      },
+      insertCutPoint: function (a, b, pt) {
+        var inserted = false;
+        state.doc.panels.forEach(function (panel) {
+          var n = panel.points.length;
+          for (var i = 0; i < n; i++) {
+            if (!panel.edgeCuts[i]) continue;
+            var p = panel.points[i];
+            var q = panel.points[(i + 1) % n];
+            var forward = Math.hypot(p.x - a.x, p.y - a.y) < 1.2 && Math.hypot(q.x - b.x, q.y - b.y) < 1.2;
+            var back = Math.hypot(p.x - b.x, p.y - b.y) < 1.2 && Math.hypot(q.x - a.x, q.y - a.y) < 1.2;
+            if (!forward && !back) continue;
+            panel.points.splice(i + 1, 0, { x: pt.x, y: pt.y });
+            panel.edgeCuts.splice(i + 1, 0, panel.edgeCuts[i]);
+            inserted = true;
+            break;
+          }
+        });
+        return inserted;
+      },
+      deleteSegment: function (a, b) {
+        if (!a || !b) return false;
+        var next = G.deleteSegment(state.doc.panels, a, b);
+        if (!next || next === state.doc.panels) return false;
+        next.forEach(function (p) { if (!p.id) p.id = uid("p"); });
+        var before = JSON.stringify(state.doc.panels.map(function (p) { return p.points; }));
+        var after = JSON.stringify(next.map(function (p) { return p.points; }));
+        if (before === after && next.length === state.doc.panels.length) return false;
+        checkpoint();
+        state.doc.panels = next;
+        gc();
         return true;
       },
       moveCutVertex: function (from, to) {

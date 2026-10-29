@@ -22,6 +22,8 @@
   var cutPoints = [];
   var cutCursor = null;
   var hoverCut = null;
+  var selectedSeg = null;
+  var hoverSeg = null;
   var dropId = null;
   var preview = null;
   var editingId = null;
@@ -149,11 +151,49 @@
     return list;
   }
 
-  function hitCutVertex(pt) {
-    var reach = 14 * pageUnit();
+  function activeCutId() {
+    if (selectedSeg && selectedSeg.cutId) return selectedSeg.cutId;
+    return hoverCut;
+  }
+
+  function cutEditHandles() {
+    var id = activeCutId();
+    if (!id || tool !== "select") return [];
+    var seen = {};
+    var list = [];
+    function add(p, kind, a, b) {
+      var key = kind + Math.round(p.x) + "," + Math.round(p.y);
+      if (seen[key]) return;
+      seen[key] = true;
+      list.push({ x: p.x, y: p.y, kind: kind, a: a, b: b });
+    }
+    session.doc.panels.forEach(function (panel) {
+      var n = panel.points.length;
+      for (var i = 0; i < n; i++) {
+        if (panel.edgeCuts[i] !== id) continue;
+        var a = panel.points[i];
+        var b = panel.points[(i + 1) % n];
+        add(a, "point");
+        add(b, "point");
+        add({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, "mid", { x: a.x, y: a.y }, { x: b.x, y: b.y });
+      }
+    });
+    if (selectedSeg) {
+      var mx = (selectedSeg.a.x + selectedSeg.b.x) / 2;
+      var my = (selectedSeg.a.y + selectedSeg.b.y) / 2;
+      var nx = selectedSeg.b.y - selectedSeg.a.y;
+      var ny = selectedSeg.a.x - selectedSeg.b.x;
+      var len = Math.hypot(nx, ny) || 1;
+      add({ x: mx + nx / len * 22 * pageUnit(), y: my + ny / len * 22 * pageUnit() }, "x");
+    }
+    return list;
+  }
+
+  function hitCutHandle(pt) {
+    var reach = 18 * pageUnit();
     var best = null;
     var bestD = reach;
-    cutVertexList().forEach(function (p) {
+    cutEditHandles().forEach(function (p) {
       var d = Math.hypot(pt.x - p.x, pt.y - p.y);
       if (d < bestD) { bestD = d; best = p; }
     });
@@ -419,7 +459,7 @@
       hideTextId: editingId,
       cutPoints: cutPoints.length ? cutPoints.slice() : null,
       cutCursor: cutPoints.length ? cutCursor : null,
-      cutHandles: tool === "select" ? cutVertexList() : null
+      cutHandles: cutEditHandles()
     });
     renderPages();
   }
@@ -956,9 +996,23 @@
       render();
       return;
     }
-    var vertex = !letter && !handle ? hitCutVertex(pt) : null;
-    if (vertex) {
-      drag = { kind: "cut-vertex", current: { x: vertex.x, y: vertex.y }, cx: e.clientX, cy: e.clientY, started: false };
+    var vertex = !letter && !handle ? hitCutHandle(pt) : null;
+    if (vertex && vertex.kind === "x") {
+      if (session.deleteSegment(selectedSeg.a, selectedSeg.b)) {
+        selectedSeg = null;
+        setStatus("Removed that part of the cut. The panels beside it merged.");
+      }
+      render();
+      return;
+    }
+    if (vertex && vertex.kind === "point") {
+      drag = { kind: "cut-vertex", current: { x: vertex.x, y: vertex.y }, refs: null, cx: e.clientX, cy: e.clientY, started: false };
+      canvas.style.cursor = "move";
+      render();
+      return;
+    }
+    if (vertex && vertex.kind === "mid") {
+      drag = { kind: "cut-mid", a: vertex.a, b: vertex.b, cx: e.clientX, cy: e.clientY, started: false };
       canvas.style.cursor = "move";
       render();
       return;
@@ -993,7 +1047,7 @@
         started: false
       };
     } else if (cut) {
-      drag = { kind: "gutter", cutId: cut.cutId, cx: e.clientX, cy: e.clientY, started: false };
+      drag = { kind: "gutter", cutId: cut.cutId, a: cut.a, b: cut.b, cx: e.clientX, cy: e.clientY, started: false };
     } else {
       select(null);
       drag = { kind: "none", cx: e.clientX, cy: e.clientY, started: false };
@@ -1019,10 +1073,13 @@
       hoverCut = null;
       if (tool === "select") {
         var panel = hitPanel(pt);
-        if (!panel) {
-          var cut = hitCut(pt);
-          hoverCut = cut ? cut.cutId : null;
-        }
+        var cut = hitCut(pt);
+        if (cut) {
+          hoverCut = cut.cutId;
+          if (!selectedSeg || selectedSeg.cutId !== cut.cutId) {
+            hoverSeg = { cutId: cut.cutId, a: cut.a, b: cut.b };
+          }
+        } else hoverSeg = null;
         var handle = selection && selection.type === "letter" ? hitHandle(selection.id, pt) : null;
         var spinning = selection && selection.type === "panel" && hitImageRotate(selection.id, pt);
         if (handle === "rotate" || handle === "tail" || spinning) canvas.style.cursor = "crosshair";
@@ -1041,9 +1098,22 @@
       render();
       return;
     }
-    if (moved && !drag.started && (drag.kind === "letter" || drag.kind === "handle" || drag.kind === "image-rotate" || (drag.kind === "panel" && drag.img))) {
+    if (moved && !drag.started && (drag.kind === "letter" || drag.kind === "handle" || drag.kind === "image-rotate" || drag.kind === "cut-vertex" || drag.kind === "cut-mid" || (drag.kind === "panel" && drag.img))) {
       drag.started = true;
       session.begin();
+      if (drag.kind === "cut-mid") {
+        session.insertCutPoint(drag.a, drag.b, { x: (drag.a.x + drag.b.x) / 2, y: (drag.a.y + drag.b.y) / 2 });
+        drag.current = { x: (drag.a.x + drag.b.x) / 2, y: (drag.a.y + drag.b.y) / 2 };
+        drag.kind = "cut-vertex";
+      }
+      if (drag.kind === "cut-vertex" && !drag.refs) {
+        drag.refs = [];
+        session.doc.panels.forEach(function (panel, pi) {
+          panel.points.forEach(function (p, i) {
+            if (Math.hypot(p.x - drag.current.x, p.y - drag.current.y) <= 1.2) drag.refs.push({ pi: pi, i: i });
+          });
+        });
+      }
     }
     if (!drag.started) return;
     if (drag.kind === "letter") {
@@ -1061,14 +1131,13 @@
       canvas.style.cursor = "crosshair";
       updateLiveValues();
     } else if (drag.kind === "cut-vertex") {
-      if (!drag.started && Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) > 3) {
-        drag.started = true;
-        session.begin();
-      }
-      if (drag.started) {
-        session.moveCutVertex(drag.current, pt);
-        drag.current = { x: pt.x, y: pt.y };
-      }
+      (drag.refs || []).forEach(function (ref) {
+        var panel = session.doc.panels[ref.pi];
+        if (!panel || !panel.points[ref.i]) return;
+        panel.points[ref.i].x = pt.x;
+        panel.points[ref.i].y = pt.y;
+      });
+      drag.current = { x: pt.x, y: pt.y };
       canvas.style.cursor = "move";
     } else if (drag.kind === "panel" && drag.img) {
       var panel = panelById(drag.id);
@@ -1095,10 +1164,10 @@
         setStatus("Lettering added. Double-click it to edit the words.");
       }
     } else if (drag.kind === "gutter" && !moved) {
-      var removed = session.deleteCut(drag.cutId);
-      selectionAlive();
+      selectedSeg = { cutId: drag.cutId, a: drag.a, b: drag.b };
+      selection = null;
       propsKey = "";
-      setStatus(removed ? "Cut removed. Panels merged back." : "That gutter is already gone.");
+      setStatus("Cut selected. Drag a handle to bend it, or Delete to remove this segment.");
     } else if (drag.kind === "panel" && !moved) {
       var panel = panelById(drag.id);
       if (panel && !panel.image) chooseImage(panel.id);
@@ -1837,6 +1906,17 @@
   }
 
   function deleteSelection() {
+    var seg = hoverSeg || selectedSeg;
+    if (seg && session.deleteSegment(seg.a, seg.b)) {
+      selectedSeg = null;
+      hoverSeg = null;
+      setStatus("Removed that part of the cut. The panels beside it merged.");
+      propsKey = "";
+      syncPageFields();
+      syncProps();
+      render();
+      return;
+    }
     if (!selection) return;
     if (selection.type === "letter") {
       session.deleteLetter(selection.id);
@@ -2160,7 +2240,7 @@
     "Drop pictures in the image bank, then drag them onto any panel.",
     "Press ? to open every shortcut.",
     "Save style keeps a favorite sound-effect look so you can use it again.",
-    "Click to add points on a cut, then double-click or press Enter. Drag an orange corner to bend it.",
+    "Hover a gutter, then drag its handles to bend the cut. Delete removes only that segment.",
     "Arc, wave, or bulge lettering from the side panel. Alt-drag a corner to skew the words.",
     "Add a page from the strip under the canvas. Each page keeps its own panels and lettering.",
     "The image bank and saved styles are shared by every page. Copy and paste works across pages."

@@ -549,6 +549,255 @@ function cleanupCollinear(poly, others) {
     return weldJunctions(faces);
   }
 
+  function segmentHits(points, a, b) {
+    var hits = lineHits(points, a, b);
+    var onSeg = [];
+    for (var i = 0; i < hits.length; i++) {
+      var t = hits[i].t;
+      if (t >= -1e-4 && t <= 1 + 1e-4) onSeg.push(hits[i]);
+    }
+    return onSeg;
+  }
+
+  function boundarySpot(points, p) {
+    var n = points.length;
+    var best = null;
+    var bestD = 0.6;
+    for (var i = 0; i < n; i++) {
+      var a = points[i];
+      var b = points[(i + 1) % n];
+      var d = distToSegment(p, a, b);
+      if (d > bestD) continue;
+      var dx = b.x - a.x;
+      var dy = b.y - a.y;
+      var len2 = dx * dx + dy * dy;
+      if (len2 < 1e-8) continue;
+      var t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+      if (t < -0.02 || t > 1.02) continue;
+      bestD = d;
+      best = { edge: i, u: Math.max(0, Math.min(1, t)), x: a.x + Math.max(0, Math.min(1, t)) * dx, y: a.y + Math.max(0, Math.min(1, t)) * dy };
+    }
+    return best;
+  }
+
+  function faceFromChain(base, ring, from, to, mids, cutId) {
+    var points = [];
+    var edgeCuts = [];
+    var i = from;
+    var guard = 0;
+    while (guard++ <= ring.length + 2) {
+      points.push({ x: ring[i].x, y: ring[i].y });
+      if (i === to) break;
+      edgeCuts.push(ring[i].outCut);
+      i = (i + 1) % ring.length;
+    }
+    for (var m = mids.length - 1; m >= 0; m--) {
+      edgeCuts.push(cutId);
+      points.push({ x: mids[m].x, y: mids[m].y });
+    }
+    edgeCuts.push(cutId);
+    if (points.length !== edgeCuts.length || points.length < 3) return null;
+    var face = ensureCW({ id: base.id, image: base.image, points: points, edgeCuts: edgeCuts });
+    if (!face || face.points.length < 3 || Math.abs(signedArea(face.points)) < 4) return null;
+    return face;
+  }
+
+  function splitPanelByChain(poly, entry, exitPt, mids, cutId) {
+    var ring = buildRing(poly, [entry, exitPt]);
+    if (!ring) return null;
+    var iA = -1;
+    var iB = -1;
+    for (var i = 0; i < ring.length; i++) {
+      if (ring[i].key === "A") iA = i;
+      if (ring[i].key === "B") iB = i;
+    }
+    if (iA < 0 || iB < 0 || iA === iB) return null;
+    if (!mids.length && adjacent(ring.length, iA, iB)) return null;
+    var p1 = faceFromChain(poly, ring, iA, iB, mids, cutId);
+    var reversed = mids.slice().reverse();
+    var p2 = faceFromChain(poly, ring, iB, iA, reversed, cutId);
+    if (!p1 || !p2) return null;
+    return [p1, p2];
+  }
+
+  function chainsFor(poly, points) {
+    var events = [];
+    function add(ev) {
+      for (var i = 0; i < events.length; i++) {
+        if (Math.hypot(events[i].x - ev.x, events[i].y - ev.y) < 0.5) {
+          if (ev.kind === "boundary") events[i] = ev;
+          return;
+        }
+      }
+      events.push(ev);
+    }
+    for (var v = 0; v < points.length; v++) {
+      var spot = boundarySpot(poly.points, points[v]);
+      var at = v === 0 ? 0 : v - 1 + 1;
+      if (spot) add({ at: at, x: spot.x, y: spot.y, kind: "boundary", edge: spot.edge, u: spot.u });
+      else if (pointInPoly(points[v], poly.points)) add({ at: at, x: points[v].x, y: points[v].y, kind: "vertex" });
+    }
+    for (var s = 0; s < points.length - 1; s++) {
+      var hits = segmentHits(poly.points, points[s], points[s + 1]);
+      for (var h = 0; h < hits.length; h++) {
+        if (hits[h].t <= 0.01 || hits[h].t >= 0.99) continue;
+        add({ at: s + hits[h].t, x: hits[h].x, y: hits[h].y, kind: "boundary", edge: hits[h].edge, u: hits[h].u });
+      }
+    }
+    events.sort(function (a, b) { return a.at - b.at; });
+    var chains = [];
+    for (var i = 0; i < events.length; i++) {
+      if (events[i].kind !== "boundary") continue;
+      var nextB = -1;
+      for (var n = i + 1; n < events.length; n++) {
+        if (events[n].kind === "boundary") { nextB = n; break; }
+      }
+      if (nextB < 0) break;
+      var mids = [];
+      for (var k = i + 1; k < nextB; k++) {
+        if (events[k].kind === "vertex") mids.push({ x: events[k].x, y: events[k].y });
+      }
+      var probe = mids.length ? mids[0] : { x: (events[i].x + events[nextB].x) / 2, y: (events[i].y + events[nextB].y) / 2 };
+      if (!pointInPoly(probe, poly.points)) { i = nextB - 1; continue; }
+      chains.push({
+        entry: { edge: events[i].edge, u: events[i].u, x: events[i].x, y: events[i].y },
+        exit: { edge: events[nextB].edge, u: events[nextB].u, x: events[nextB].x, y: events[nextB].y },
+        mids: mids
+      });
+      i = nextB - 1;
+    }
+    return chains;
+  }
+
+  function applyPolyline(panels, points, cutId) {
+    if (!points || points.length < 2) return { panels: panels, count: 0 };
+    var list = panels.map(clonePoly);
+    var jobs = [];
+    for (var p = 0; p < list.length; p++) {
+      var found = chainsFor(list[p], points);
+      for (var c = 0; c < found.length; c++) jobs.push(found[c]);
+    }
+    var count = 0;
+    for (var j = 0; j < jobs.length; j++) {
+      var job = jobs[j];
+      for (var i = 0; i < list.length; i++) {
+        var probe = job.mids.length ? job.mids[0] : { x: (job.entry.x + job.exit.x) / 2, y: (job.entry.y + job.exit.y) / 2 };
+        if (!pointInPoly(probe, list[i].points)) continue;
+        var pieces = splitPanelByChain(list[i], job.entry, job.exit, job.mids, cutId);
+        if (!pieces) continue;
+        list.splice(i, 1, pieces[0], pieces[1]);
+        count++;
+        break;
+      }
+    }
+    if (!count) return { panels: panels, count: 0 };
+    return { panels: weldJunctions(list), count: count };
+  }
+
+  function snapToEdge(panels, pt, maxDist) {
+    var best = null;
+    var bestD = maxDist;
+    for (var i = 0; i < panels.length; i++) {
+      var poly = panels[i];
+      var n = poly.points.length;
+      for (var e = 0; e < n; e++) {
+        var a = poly.points[e];
+        var b = poly.points[(e + 1) % n];
+        var d = distToSegment(pt, a, b);
+        if (d >= bestD) continue;
+        var dx = b.x - a.x;
+        var dy = b.y - a.y;
+        var len2 = dx * dx + dy * dy;
+        if (len2 < 1e-8) continue;
+        var t = Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / len2));
+        bestD = d;
+        best = { x: a.x + dx * t, y: a.y + dy * t };
+      }
+    }
+    return best || { x: pt.x, y: pt.y };
+  }
+
+  function incidentCuts(panels, pt) {
+    var list = [];
+    var seen = {};
+    panels.forEach(function (poly, pi) {
+      var n = poly.points.length;
+      for (var i = 0; i < n; i++) {
+        if (!poly.edgeCuts[i]) continue;
+        var a = poly.points[i];
+        var b = poly.points[(i + 1) % n];
+        var other = null;
+        if (samePt(a, pt)) other = b;
+        else if (samePt(b, pt)) other = a;
+        if (!other) continue;
+        var key = Math.round(other.x * 4) + "," + Math.round(other.y * 4);
+        if (seen[key]) continue;
+        seen[key] = true;
+        list.push({ other: { x: other.x, y: other.y }, cut: poly.edgeCuts[i] });
+      }
+    });
+    return list;
+  }
+
+  function segmentStops(panels, pt, prev) {
+    var cuts = incidentCuts(panels, pt);
+    if (cuts.length !== 2) return true;
+    var nxt = samePt(cuts[0].other, prev) ? cuts[1].other : cuts[0].other;
+    var abx = pt.x - prev.x;
+    var aby = pt.y - prev.y;
+    var bcx = nxt.x - pt.x;
+    var bcy = nxt.y - pt.y;
+    var cross = abx * bcy - aby * bcx;
+    var dot = abx * bcx + aby * bcy;
+    if (dot <= 0) return true;
+    var scale = Math.hypot(abx, aby) * Math.hypot(bcx, bcy);
+    return Math.abs(cross) > scale * 0.12;
+  }
+
+  function walkSegment(panels, from, toward) {
+    var chain = [from];
+    var prev = from;
+    var cur = toward;
+    var guard = 0;
+    while (guard++ < 40) {
+      chain.push(cur);
+      if (segmentStops(panels, cur, prev)) break;
+      var cuts = incidentCuts(panels, cur);
+      var nxt = samePt(cuts[0].other, prev) ? cuts[1].other : cuts[0].other;
+      prev = cur;
+      cur = nxt;
+    }
+    return chain;
+  }
+
+  function deleteSegment(panels, a, b) {
+    var back = walkSegment(panels, b, a);
+    var fore = walkSegment(panels, a, b);
+    var verts = back.reverse().concat(fore.slice(1));
+    var mark = {};
+    for (var i = 0; i < verts.length - 1; i++) {
+      mark[Math.round(verts[i].x * 4) + "," + Math.round(verts[i].y * 4) + ">" + Math.round(verts[i + 1].x * 4) + "," + Math.round(verts[i + 1].y * 4)] = true;
+    }
+    var temp = "__seg";
+    var cloned = panels.map(clonePoly);
+    var tagged = 0;
+    cloned.forEach(function (poly) {
+      var n = poly.points.length;
+      for (var e = 0; e < n; e++) {
+        if (!poly.edgeCuts[e]) continue;
+        var p = poly.points[e];
+        var q = poly.points[(e + 1) % n];
+        var key = Math.round(p.x * 4) + "," + Math.round(p.y * 4) + ">" + Math.round(q.x * 4) + "," + Math.round(q.y * 4);
+        var rev = Math.round(q.x * 4) + "," + Math.round(q.y * 4) + ">" + Math.round(p.x * 4) + "," + Math.round(p.y * 4);
+        if (!mark[key] && !mark[rev]) continue;
+        poly.edgeCuts[e] = temp;
+        tagged++;
+      }
+    });
+    if (!tagged) return panels;
+    return deleteCut(cloned, temp);
+  }
+
   function nearestCut(panels, point, maxDist) {
     var best = null;
     for (var i = 0; i < panels.length; i++) {
@@ -558,7 +807,14 @@ function cleanupCollinear(poly, others) {
         var id = panel.edgeCuts[e];
         if (!id) continue;
         var d = distToSegment(point, panel.points[e], panel.points[(e + 1) % n]);
-        if (d <= maxDist && (!best || d < best.dist)) best = { cutId: id, dist: d };
+        if (d <= maxDist && (!best || d < best.dist)) {
+          best = {
+            cutId: id,
+            dist: d,
+            a: { x: panel.points[e].x, y: panel.points[e].y },
+            b: { x: panel.points[(e + 1) % n].x, y: panel.points[(e + 1) % n].y }
+          };
+        }
       }
     }
     return best;
@@ -675,6 +931,9 @@ function cleanupCollinear(poly, others) {
     ensureCW: ensureCW,
     splitPanel: splitPanel,
     applyCut: applyCut,
+    applyPolyline: applyPolyline,
+    snapToEdge: snapToEdge,
+    deleteSegment: deleteSegment,
     deleteCut: deleteCut,
     nearestCut: nearestCut,
     insetPolygon: insetPolygon
