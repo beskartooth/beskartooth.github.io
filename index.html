@@ -78,7 +78,5 @@ function hit(k){try{fetch(B+k,{mode:'cors',keepalive:true}).catch(function(){});
 if(!/[?&]notrack/.test(location.search)&&!localStorage.getItem('besky-notrack'))hit('page-views');
 document.querySelectorAll('[data-track]').forEach(function(a){a.addEventListener('click',function(){if(!localStorage.getItem('besky-notrack'))hit('click-'+a.dataset.track);});});})();
 </script>
-<script src="js/config.js"></script>
-<script src="js/analytics.js"></script>
 </body>
 </html>

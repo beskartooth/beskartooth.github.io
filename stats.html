@@ -6,7 +6,7 @@
 <button id="me">Don't count my own visits on this device</button> <small id="ms"></small>
 </main><script>
 var B='https://abacus.jasoncameron.dev/get/beskartooth-links/';
-var rows=[['page-views','👀 Page views'],['click-commissions','🎨 Commissions clicks'],['click-etsy','🛍️ Etsy clicks'],['click-cookie-game','🍪 Cookie game clicks'],['click-besky-timer','⏰ Besky Timer clicks'],['click-comic-studio','💬 Comic Studio clicks'],['click-x','𝕏 X clicks'],['click-tiktok','🎵 TikTok clicks']];
+var rows=[['page-views','👀 Page views'],['click-commissions','🎨 Commissions clicks'],['click-etsy','🛍️ Etsy clicks'],['click-cookie-game','🍪 Cookie game clicks'],['click-besky-timer','⏰ Besky Timer clicks'],['click-comic-studio','💬 Comic Studio clicks'],['comic-studio-page-views','💬 Comic Studio page views'],['click-x','𝕏 X clicks'],['click-tiktok','🎵 TikTok clicks']];
 var t=document.getElementById('t');
 rows.forEach(function(r){var tr=document.createElement('tr');tr.innerHTML='<td>'+r[1]+'</td><td>…</td>';t.appendChild(tr);
 fetch(B+r[0]).then(function(x){return x.ok?x.json():{value:0}}).then(function(j){tr.lastChild.textContent=j.value||0}).catch(function(){tr.lastChild.textContent='0'});});

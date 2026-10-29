@@ -1,11 +1,13 @@
-/* Cookieless page view. Does nothing until GOATCOUNTER_CODE is set in config.js. */
+/* One cookieless page view for Comic Studio.
+   Same Abacus namespace as the link tree (beskartooth-links) and the same
+   besky-notrack opt-out. A failed or blocked request is ignored. */
 (function () {
-  var code = typeof GOATCOUNTER_CODE === "string" ? GOATCOUNTER_CODE.trim() : "";
-  if (!code || !/^[A-Za-z0-9-]+$/.test(code)) return;
-  var origin = "https://" + code + ".goatcounter.com";
-  var script = document.createElement("script");
-  script.async = true;
-  script.src = origin + "/count.js";
-  script.setAttribute("data-goatcounter", origin + "/count");
-  document.head.appendChild(script);
+  try {
+    if (/[?&]notrack/.test(location.search)) return;
+    if (localStorage.getItem("besky-notrack")) return;
+    fetch("https://abacus.jasoncameron.dev/hit/beskartooth-links/comic-studio-page-views", {
+      mode: "cors",
+      keepalive: true
+    }).catch(function () {});
+  } catch (e) {}
 })();
