@@ -45,6 +45,8 @@ Layouts (blank, six-panel grid, three tiers, four-panel grid, splash plus two, v
 
 ### View zoom
 
+The strip under the canvas switches pages. Add page, Duplicate, and Delete are on that strip, and you can drag a page number to reorder. Each page keeps its own layout, pictures, and lettering. The image bank and saved styles belong to the whole project. Undo covers every page. Export PNG and Export JPG save the page you are looking at. All PNG and All JPG download every page in one zip. A project saved before pages existed still opens as a single page.
+
 The corner of the page has zoom out, a menu (Fit, 50%, 100%, 200%, 400%), and zoom in. Fit is the whole page in the window. 100% is actual pixels. This only changes the on-screen view. The project and the exported PNG or JPG stay at the page size. Scroll, Space+drag, or middle-mouse drag to pan when you are zoomed in. Ctrl+0 fits the page. Ctrl+1 is 100%. + and − zoom the view. Ctrl+scroll zooms the view toward the pointer, unless the pointer is over the selected picture or lettering, in which case it zooms that instead.
 
 ### Shortcuts
