@@ -102,25 +102,90 @@
     }
   }
 
+  function paintGlyph(ctx, letter, text, x, y, rot, scale) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (rot) ctx.rotate(rot);
+    if (scale && scale !== 1) ctx.scale(scale, scale);
+    if (letter.strokeWidth > 0) {
+      ctx.lineWidth = letter.strokeWidth;
+      ctx.strokeStyle = letter.stroke;
+      ctx.strokeText(text, 0, 0);
+    }
+    ctx.fillStyle = letter.fill;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+  }
+
+  function drawWarpedLine(ctx, letter, text, yBase) {
+    var widths = [];
+    var total = 0;
+    for (var i = 0; i < text.length; i++) {
+      var w = ctx.measureText(text.charAt(i)).width;
+      widths.push(w);
+      total += w;
+    }
+    if (!total) return;
+    var amount = Math.max(-100, Math.min(100, Number(letter.warpAmount) || 0)) / 100;
+    var kind = letter.warp || "";
+    var persp = Math.max(-1, Math.min(1, Number(letter.perspective) || 0));
+    var cursor = -total / 2;
+    for (var c = 0; c < text.length; c++) {
+      var gx = cursor + widths[c] / 2;
+      var gy = yBase;
+      var rot = 0;
+      var scale = 1;
+      if (kind === "arc" && amount) {
+        var sweep = amount * Math.PI * 0.85;
+        var u = (gx + total / 2) / total;
+        var ang = (u - 0.5) * sweep;
+        var radius = Math.abs(sweep) < 0.08 ? total : total / sweep;
+        gx = Math.sin(ang) * radius;
+        gy = yBase + (1 - Math.cos(ang)) * radius * (amount < 0 ? -0.45 : 0.45);
+        rot = ang;
+      } else if (kind === "wave" && amount) {
+        var freq = Math.PI * 2 / Math.max(letter.fontSize * 2.2, 24);
+        gy = yBase + Math.sin(gx * freq) * amount * letter.fontSize * 0.65;
+        rot = Math.cos(gx * freq) * amount * 0.55;
+      } else if (kind === "bulge" && amount) {
+        var t = Math.min(1, Math.abs(gx) / (total / 2));
+        scale = Math.max(0.35, 1 + (1 - t) * amount * 0.85);
+      }
+      if (persp) scale *= Math.max(0.3, 1 + persp * (gy / Math.max(letter.h / 2, 1)));
+      paintGlyph(ctx, letter, text.charAt(c), gx, gy, rot, scale);
+      cursor += widths[c];
+    }
+  }
+
   function drawText(ctx, letter, maxWidth) {
+    ctx.save();
     ctx.font = fontString(letter);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
     ctx.miterLimit = 2;
+    var shearX = (Number(letter.skewX) || 0) / Math.max(letter.h, 1);
+    var shearY = (Number(letter.skewY) || 0) / Math.max(letter.w, 1);
+    if (shearX || shearY) ctx.transform(1, shearY, shearX, 1, 0, 0);
     var lines = wrapLines(ctx, letter.text, Math.max(8, maxWidth));
     var lh = letter.fontSize * 1.15;
     var y = -((lines.length - 1) * lh) / 2;
+    var warped = (letter.warp === "arc" || letter.warp === "wave" || letter.warp === "bulge") && Number(letter.warpAmount);
+    var persp = Number(letter.perspective);
     for (var i = 0; i < lines.length; i++) {
-      if (letter.strokeWidth > 0) {
-        ctx.lineWidth = letter.strokeWidth;
-        ctx.strokeStyle = letter.stroke;
-        ctx.strokeText(lines[i], 0, y);
+      if (warped || persp) drawWarpedLine(ctx, letter, lines[i], y);
+      else {
+        if (letter.strokeWidth > 0) {
+          ctx.lineWidth = letter.strokeWidth;
+          ctx.strokeStyle = letter.stroke;
+          ctx.strokeText(lines[i], 0, y);
+        }
+        ctx.fillStyle = letter.fill;
+        ctx.fillText(lines[i], 0, y);
       }
-      ctx.fillStyle = letter.fill;
-      ctx.fillText(lines[i], 0, y);
       y += lh;
     }
+    ctx.restore();
   }
 
   function drawTrail(ctx, letter, cx, cy) {

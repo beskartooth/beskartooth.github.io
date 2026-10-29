@@ -417,6 +417,12 @@
         letter.shapeStrokeWidth = clamp(Number(style.shapeStrokeWidth), 0, 48);
       }
       if (style.rotation != null && isFinite(Number(style.rotation))) letter.rotation = normDeg(style.rotation);
+      if (style.warp === "arc" || style.warp === "wave" || style.warp === "bulge") letter.warp = style.warp;
+      else if (style.warp === "" || style.warp === "none") letter.warp = "";
+      if (style.warpAmount != null && isFinite(Number(style.warpAmount))) letter.warpAmount = clamp(Number(style.warpAmount), -100, 100);
+      if (style.skewX != null && isFinite(Number(style.skewX))) letter.skewX = clamp(Number(style.skewX), -400, 400);
+      if (style.skewY != null && isFinite(Number(style.skewY))) letter.skewY = clamp(Number(style.skewY), -400, 400);
+      if (style.perspective != null && isFinite(Number(style.perspective))) letter.perspective = clamp(Number(style.perspective), -1, 1);
       ["fill", "stroke", "shapeFill", "shapeStroke"].forEach(function (k) {
         if (isHex(style[k])) letter[k] = style[k];
       });
@@ -830,9 +836,12 @@
       updateLetter: function (id, partial) {
         var letter = letterById(id);
         if (!letter || !partial) return;
-        ["x", "y", "w", "h", "rotation", "fontSize", "strokeWidth", "shapeStrokeWidth", "fontWeight"].forEach(function (k) {
+        ["x", "y", "w", "h", "rotation", "fontSize", "strokeWidth", "shapeStrokeWidth", "fontWeight", "warpAmount", "skewX", "skewY", "perspective"].forEach(function (k) {
           if (partial[k] != null && isFinite(partial[k])) letter[k] = Number(partial[k]);
         });
+        if (partial.warp === "arc" || partial.warp === "wave" || partial.warp === "bulge" || partial.warp === "none" || partial.warp === "") {
+          letter.warp = partial.warp === "none" ? "" : partial.warp;
+        }
         ["text", "font", "fontStyle", "fill", "stroke", "shapeFill", "shapeStroke"].forEach(function (k) {
           if (partial[k] != null) letter[k] = partial[k];
         });
@@ -844,6 +853,10 @@
         letter.h = Math.max(36, letter.h);
         letter.fontSize = clamp(letter.fontSize, 8, 400);
         letter.rotation = ((letter.rotation + 180) % 360 + 360) % 360 - 180;
+        letter.warpAmount = clamp(Number(letter.warpAmount) || 0, -100, 100);
+        letter.skewX = clamp(Number(letter.skewX) || 0, -400, 400);
+        letter.skewY = clamp(Number(letter.skewY) || 0, -400, 400);
+        letter.perspective = clamp(Number(letter.perspective) || 0, -1, 1);
       },
       applyLetterStyle: function (id, style) {
         if (!letterById(id) || !style) return false;
@@ -1015,6 +1028,11 @@
           if (letter.tail && src.tail) {
             letter.tail = { dx: Number(src.tail.dx) || 0, dy: Number(src.tail.dy) || 0 };
           }
+          if (src.warp === "arc" || src.warp === "wave" || src.warp === "bulge") letter.warp = src.warp;
+          if (src.warpAmount != null) letter.warpAmount = clamp(Number(src.warpAmount) || 0, -100, 100);
+          if (src.skewX != null) letter.skewX = clamp(Number(src.skewX) || 0, -400, 400);
+          if (src.skewY != null) letter.skewY = clamp(Number(src.skewY) || 0, -400, 400);
+          if (src.perspective != null) letter.perspective = clamp(Number(src.perspective) || 0, -1, 1);
           letters.push(letter);
         });
         var doc = {
