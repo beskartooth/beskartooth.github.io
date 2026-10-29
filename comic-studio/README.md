@@ -37,7 +37,7 @@ The bank is stored in this browser with IndexedDB, so it is still there after a 
 
 ### Cutting
 
-The page starts as one panel. With the Cut tool, click a start point and an end point. Every panel the line crosses splits along that line, including angled cuts. Hold Shift to snap the cut horizontal or vertical.
+The page starts as one panel. With the Cut tool, click to add points. Double-click or press Enter to finish, and Esc to cancel. Every panel the line crosses splits along that line, so a bent path can make a custom panel shape. Hold Shift to snap the next segment horizontal or vertical. In Select, drag an orange corner to bend a cut. Click a gutter to merge that cut back.
 
 Gutters are the gap between panels along a cut. Switch to Select and click a gutter to delete that cut and merge the panels back together. If both sides had an image, the larger panel’s image is kept.
 

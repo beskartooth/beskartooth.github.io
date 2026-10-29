@@ -617,6 +617,48 @@
         gc();
         return true;
       },
+      cutPolyline: function (points) {
+        if (!points || points.length < 2) return false;
+        var cutId = uid("c");
+        var panels = state.doc.panels;
+        var count = 0;
+        for (var i = 0; i < points.length - 1; i++) {
+          if (Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y) < 8) continue;
+          var res = G.applyCut(panels, points[i], points[i + 1], cutId);
+          if (!res.count) continue;
+          count += res.count;
+          var seen = new Set();
+          panels = res.panels.map(function (p) {
+            var copy = {
+              id: p.id,
+              points: p.points.map(function (pt) { return { x: pt.x, y: pt.y }; }),
+              edgeCuts: p.edgeCuts.slice(),
+              image: p.image ? Object.assign({}, p.image) : null
+            };
+            if (!copy.id || seen.has(copy.id)) copy.id = uid("p");
+            seen.add(copy.id);
+            return copy;
+          });
+        }
+        if (!count) return false;
+        checkpoint();
+        state.doc.panels = panels;
+        return true;
+      },
+      moveCutVertex: function (from, to) {
+        if (!from || !to) return false;
+        var moved = false;
+        state.doc.panels.forEach(function (panel) {
+          panel.points.forEach(function (pt) {
+            if (Math.hypot(pt.x - from.x, pt.y - from.y) <= 0.8) {
+              pt.x = to.x;
+              pt.y = to.y;
+              moved = true;
+            }
+          });
+        });
+        return moved;
+      },
       cut: function (a, b) {
         if (Math.hypot(b.x - a.x, b.y - a.y) < 8) return false;
         var cutId = uid("c");
