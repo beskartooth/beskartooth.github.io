@@ -119,7 +119,7 @@ button { cursor: pointer; }
   height: 100%;
   min-width: 980px;
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr) auto auto;
+  grid-template-rows: 58px minmax(0, 1fr) auto auto auto;
 }
 
 #top, #tools, #props, #status {
@@ -415,6 +415,24 @@ label .deg input { width: 5.5rem; }
 }
 #editor.show { display: block; }
 
+#pages {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--rail);
+  border-top: 1px solid var(--line);
+  overflow: auto;
+}
+#page-list { display: flex; gap: 4px; }
+.page-chip {
+  min-width: 32px;
+  padding: 4px 8px;
+}
+.page-chip[aria-current="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 #bank {
   background: var(--rail);
   border-top: 1px solid var(--line);

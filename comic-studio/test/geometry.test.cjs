@@ -274,13 +274,21 @@ function mulberry32(a) {
   s.setImageRotation(id, 190);
   assert(near(s.doc.panels[0].image.rotation, -170), "190 degrees wraps");
   const raw = s.toJSON();
-  assert(raw.panels[0].image.rotation === s.doc.panels[0].image.rotation, "json keeps rotation");
-  assert(raw.panels[0].image.flipX === true, "json keeps flip");
+  const shot = raw.pages[0].panels[0].image;
+  assert(shot.rotation === s.doc.panels[0].image.rotation, "json keeps rotation");
+  assert(shot.flipX === true, "json keeps flip");
   const s3 = Doc.createSession();
   s3.loadJSON(JSON.stringify(raw));
   const again = s3.doc.panels.find((p) => p.image);
   assert(again && near(again.image.rotation, -170) && again.image.flipX === true, "reload rotation");
-  const old = JSON.parse(JSON.stringify(raw));
+  const old = {
+    type: "comic-studio",
+    version: 1,
+    page: raw.pages[0].page,
+    panels: JSON.parse(JSON.stringify(raw.pages[0].panels)),
+    letters: [],
+    bank: raw.bank
+  };
   delete old.panels[0].image.rotation;
   delete old.panels[0].image.flipX;
   delete old.panels[0].image.flipY;

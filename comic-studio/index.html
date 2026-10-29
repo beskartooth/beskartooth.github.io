@@ -27,8 +27,8 @@
       <button type="button" id="save" title="Save project (Ctrl+S)">Save</button>
       <button type="button" id="load">Load</button>
       <span class="sep" aria-hidden="true"></span>
-      <button type="button" id="export-png" class="primary">Export PNG</button>
-      <button type="button" id="export-jpg">Export JPG</button>
+      <button type="button" id="export-png" class="primary" title="Export this page as PNG">Export PNG</button>
+      <button type="button" id="export-jpg" title="Export this page as JPG">Export JPG</button>
       <span class="sep" aria-hidden="true"></span>
       <button type="button" id="shortcuts-open" title="Shortcuts (?)">
         <svg class="key-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -91,6 +91,15 @@
       <h2>Selection</h2>
       <div id="sel-props"></div>
     </aside>
+  </div>
+  <div id="pages" aria-label="Pages">
+    <div id="page-list"></div>
+    <button type="button" id="page-add">Add page</button>
+    <button type="button" id="page-dup">Duplicate</button>
+    <button type="button" id="page-del">Delete</button>
+    <span class="sep" aria-hidden="true"></span>
+    <button type="button" id="export-all-png" title="Download every page as PNG in one zip">All PNG</button>
+    <button type="button" id="export-all-jpg" title="Download every page as JPG in one zip">All JPG</button>
   </div>
   <section id="bank" aria-label="Image bank">
     <div class="bank-bar">
@@ -158,6 +167,13 @@
         <p><kbd>Space</kbd>+drag Pan</p>
         <p>Middle-mouse drag Pan</p>
         <p><kbd>Scroll</kbd> Scroll the page, except over the selected picture</p>
+      </section>
+      <section>
+        <h3>Pages</h3>
+        <p>The strip under the page switches pages. Each page has its own layout, pictures, and lettering</p>
+        <p>Add page, Duplicate, and Delete are on that strip. Drag a number to reorder</p>
+        <p>Export PNG and Export JPG save the page you are looking at. All PNG and All JPG download every page in one zip</p>
+        <p>The image bank and saved styles are shared. Copy and paste works from one page to another</p>
       </section>
       <section>
         <h3>Lettering</h3>

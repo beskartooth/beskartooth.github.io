@@ -374,6 +374,7 @@
       hideTextId: editingId,
       cutLine: cutStart && cutCursor ? { a: cutStart, b: cutCursor } : null
     });
+    renderPages();
   }
 
   function syncPageFields() {
@@ -394,7 +395,9 @@
     if (document.activeElement !== $("border-color")) $("border-color").value = page.border.color;
     if (document.activeElement !== $("border-width")) $("border-width").value = String(Math.round(page.border.width));
     $("border-val").textContent = Math.round(page.border.width) + " px";
-    metaEl.textContent = Math.round(page.width) + "×" + Math.round(page.height) + " · " + session.doc.panels.length + " panels";
+    metaEl.textContent = "Page " + (session.pageIndex() + 1) + " of " + session.pageCount()
+      + " · " + Math.round(page.width) + "×" + Math.round(page.height)
+      + " · " + session.doc.panels.length + " panels";
     $("undo").disabled = !session.canUndo();
     $("redo").disabled = !session.canRedo();
   }
@@ -1335,7 +1338,50 @@
     data.styles = styles.map(function (style) { return Object.assign({}, style); });
     downloadBlob(new Blob([JSON.stringify(data)], { type: "application/json" }), "comic-studio-project.json");
     session.markClean();
-    setStatus("Project saved on this device. It contains your page, image bank, and lettering styles.");
+    setStatus("Project saved on this device. It contains every page, the image bank, and lettering styles.");
+  }
+
+  function crc32(bytes) {
+    if (!crc32.table) {
+      var table = new Uint32Array(256);
+      for (var n = 0; n < 256; n++) {
+        var c = n;
+        for (var k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+        table[n] = c >>> 0;
+      }
+      crc32.table = table;
+    }
+    var crc = 0xffffffff;
+    for (var i = 0; i < bytes.length; i++) crc = (crc32.table[(crc ^ bytes[i]) & 255] ^ (crc >>> 8)) >>> 0;
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  function makeZip(files) {
+    var parts = [];
+    var central = [];
+    var offset = 0;
+    function u16(n) { return [n & 255, (n >>> 8) & 255]; }
+    function u32(n) { return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]; }
+    files.forEach(function (file) {
+      var name = new TextEncoder().encode(file.name);
+      var data = file.data;
+      var crc = crc32(data);
+      var local = u32(0x04034b50).concat(u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0));
+      var localBytes = Uint8Array.from(local);
+      parts.push(localBytes, name, data);
+      var cen = u32(0x02014b50).concat(u16(20), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset));
+      central.push(Uint8Array.from(cen), name);
+      offset += localBytes.length + name.length + data.length;
+    });
+    var centralStart = offset;
+    var centralSize = central.reduce(function (sum, part) { return sum + part.length; }, 0);
+    var end = Uint8Array.from(u32(0x06054b50).concat(u16(0), u16(0), u16(files.length), u16(files.length), u32(centralSize), u32(centralStart), u16(0)));
+    var chunks = parts.concat(central, [end]);
+    var total = chunks.reduce(function (sum, part) { return sum + part.length; }, 0);
+    var out = new Uint8Array(total);
+    var pos = 0;
+    chunks.forEach(function (part) { out.set(part, pos); pos += part.length; });
+    return out;
   }
 
   function exportPage(mime) {
@@ -1348,6 +1394,101 @@
     }).catch(function () {
       setStatus("Export failed. Try a smaller page size.");
     });
+  }
+
+  function exportAll(mime) {
+    var ext = mime === "image/jpeg" ? "jpg" : "png";
+    var count = session.pageCount();
+    setStatus("Exporting " + count + (count === 1 ? " page…" : " pages…"));
+    var files = [];
+    var chain = Promise.resolve();
+    for (var i = 0; i < count; i++) {
+      (function (index) {
+        chain = chain.then(function () {
+          return R.renderBlob(session.pageAt(index), session.images, mime).then(function (blob) {
+            return blob.arrayBuffer().then(function (buf) {
+              files.push({ name: "comic-" + (index + 1) + "." + ext, data: new Uint8Array(buf) });
+            });
+          });
+        });
+      })(i);
+    }
+    chain.then(function () {
+      downloadBlob(new Blob([makeZip(files)], { type: "application/zip" }), "comic-pages.zip");
+      setStatus("Exported " + count + (count === 1 ? " page" : " pages") + " as comic-pages.zip.");
+    }).catch(function () {
+      setStatus("Export failed. Try a smaller page size.");
+    });
+  }
+
+  var pageDragFrom = -1;
+  var pageListSig = "";
+  function showPage(index) {
+    if (editingId) editor.blur();
+    if (!session.goToPage(index)) return;
+    selection = null;
+    cutStart = null;
+    cutCursor = null;
+    preview = null;
+    propsKey = "";
+    syncPageFields();
+    syncProps();
+    renderBank();
+    render();
+    setStatus("Page " + (session.pageIndex() + 1) + " of " + session.pageCount() + ".");
+  }
+  function afterPageEdit(message) {
+    selection = null;
+    cutStart = null;
+    cutCursor = null;
+    preview = null;
+    propsKey = "";
+    setStatus(message);
+    syncPageFields();
+    syncProps();
+    renderBank();
+    render();
+  }
+  function renderPages() {
+    var list = $("page-list");
+    if (!list) return;
+    var count = session.pageCount();
+    var active = session.pageIndex();
+    var ids = [];
+    for (var n = 0; n < count; n++) ids.push((session.pageAt(n) && session.pageAt(n).id) || n);
+    var sig = active + ":" + ids.join(",");
+    if (sig === pageListSig && list.childElementCount === count) return;
+    pageListSig = sig;
+    list.textContent = "";
+    for (var i = 0; i < count; i++) {
+      var chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "page-chip";
+      chip.draggable = true;
+      chip.textContent = String(i + 1);
+      if (i === active) chip.setAttribute("aria-current", "true");
+      chip.title = "Page " + (i + 1) + ". Drag to reorder.";
+      (function (index, button) {
+        button.addEventListener("click", function () { showPage(index); });
+        button.addEventListener("dragstart", function (e) {
+          pageDragFrom = index;
+          e.dataTransfer.setData("text/plain", String(index));
+          e.dataTransfer.effectAllowed = "move";
+        });
+        button.addEventListener("dragover", function (e) { e.preventDefault(); });
+        button.addEventListener("drop", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var from = Number(e.dataTransfer.getData("text/plain"));
+          if (!isFinite(from)) from = pageDragFrom;
+          if (!session.movePage(from, index)) return;
+          afterPageEdit("Reordered the pages.");
+        });
+      })(i, chip);
+      list.appendChild(chip);
+    }
+    var del = $("page-del");
+    if (del) del.disabled = count < 2;
   }
 
   function doUndo() {
@@ -1687,6 +1828,24 @@
   $("load").addEventListener("click", function () { fileProject.value = ""; fileProject.click(); });
   $("export-png").addEventListener("click", function () { exportPage("image/png"); });
   $("export-jpg").addEventListener("click", function () { exportPage("image/jpeg"); });
+  $("export-all-png").addEventListener("click", function () { exportAll("image/png"); });
+  $("export-all-jpg").addEventListener("click", function () { exportAll("image/jpeg"); });
+  $("page-add").addEventListener("click", function () {
+    if (editingId) editor.blur();
+    if (!session.addPage()) return;
+    afterPageEdit("Added page " + session.pageCount() + ". Undo removes it.");
+  });
+  $("page-dup").addEventListener("click", function () {
+    if (editingId) editor.blur();
+    if (!session.duplicatePage()) return;
+    afterPageEdit("Duplicated this page.");
+  });
+  $("page-del").addEventListener("click", function () {
+    if (editingId) editor.blur();
+    var number = session.pageIndex() + 1;
+    if (!session.deletePage()) return;
+    afterPageEdit("Deleted page " + number + ". Undo brings it back.");
+  });
 
   fileProject.addEventListener("change", function () {
     var file = fileProject.files && fileProject.files[0];
@@ -1895,7 +2054,9 @@
     "Ctrl+0 fits the page. Ctrl+1 is 100%.",
     "Drop pictures in the image bank, then drag them onto any panel.",
     "Press ? to open every shortcut.",
-    "Save style keeps a favorite sound-effect look so you can use it again."
+    "Save style keeps a favorite sound-effect look so you can use it again.",
+    "Add a page from the strip under the canvas. Each page keeps its own panels and lettering.",
+    "The image bank and saved styles are shared by every page. Copy and paste works across pages."
   ];
   var TOUR = [
     {
@@ -2460,10 +2621,7 @@
   }
 
   function pageHasWork() {
-    var doc = session.doc;
-    if (doc.letters.length) return true;
-    if (doc.panels.length !== 1 || doc.panels[0].image) return true;
-    return false;
+    return session.projectHasWork();
   }
 
   function requestNew() {

@@ -185,25 +185,84 @@
       if (m) state.seq = Math.max(state.seq, Number(m[1]) + 1);
     }
 
-    function blank() {
+    function blankPage(settings) {
       var preset = PAGE_PRESETS.comic;
-      state.doc = {
+      var width = settings && settings.width ? settings.width : preset.width;
+      var height = settings && settings.height ? settings.height : preset.height;
+      var rect = G.rectPanel(width, height);
+      var border = settings && settings.border;
+      return {
+        id: uid("g"),
         page: {
-          width: preset.width,
-          height: preset.height,
-          background: "#ffffff",
-          gutter: 28,
-          border: { enabled: true, color: "#111111", width: 4 }
+          width: width,
+          height: height,
+          background: settings && isHex(settings.background) ? settings.background : "#ffffff",
+          gutter: settings && isFinite(Number(settings.gutter)) ? Number(settings.gutter) : 28,
+          border: {
+            enabled: !border || border.enabled !== false,
+            color: border && isHex(border.color) ? border.color : "#111111",
+            width: border && border.width != null ? border.width : 4
+          }
         },
         panels: [{
           id: uid("p"),
-          points: G.rectPanel(preset.width, preset.height).points,
-          edgeCuts: [null, null, null, null],
+          points: rect.points,
+          edgeCuts: rect.edgeCuts.slice(),
           image: null
         }],
         letters: [],
-        bank: []
+        bank: state.bank
       };
+    }
+
+    function setBank(bank) {
+      state.bank = bank || [];
+      (state.pages || []).forEach(function (p) { p.bank = state.bank; });
+      if (state.doc) state.doc.bank = state.bank;
+    }
+
+    function attach() {
+      if (!state.pages.length) state.pages = [blankPage()];
+      if (state.index < 0 || state.index >= state.pages.length) state.index = 0;
+      state.doc = state.pages[state.index];
+      state.doc.bank = state.bank;
+    }
+
+    function captureProject() {
+      return {
+        pages: state.pages.map(function (p) {
+          return { id: p.id, page: p.page, panels: p.panels, letters: p.letters };
+        }),
+        index: state.index,
+        bank: state.bank
+      };
+    }
+
+    function projectJSON() { return JSON.stringify(captureProject()); }
+
+    function applyProject(snap) {
+      if (snap && Array.isArray(snap.pages)) {
+        state.bank = snap.bank || [];
+        state.pages = snap.pages.map(function (p) {
+          return { id: p.id || uid("g"), page: p.page, panels: p.panels, letters: p.letters || [], bank: state.bank };
+        });
+        state.index = snap.index || 0;
+        attach();
+        return;
+      }
+      state.bank = (snap && snap.bank) || [];
+      if (snap) snap.bank = state.bank;
+      state.pages = [snap];
+      state.index = 0;
+      state.doc = snap;
+    }
+
+    function blank() {
+      state.bank = [];
+      state.pages = [blankPage()];
+      state.index = 0;
+      state.doc = state.pages[0];
+      state.doc.bank = state.bank;
     }
 
     function fullPanel() {
@@ -231,30 +290,39 @@
         width: Math.max(1, Number(info.width) || 1),
         height: Math.max(1, Number(info.height) || 1)
       };
-      if (!state.doc.bank) state.doc.bank = [];
-      state.doc.bank.push(item);
+      if (!state.bank) setBank([]);
+      state.bank.push(item);
+      state.doc.bank = state.bank;
       return item;
     }
 
     function commitMutation(mutate) {
       end();
-      var before = JSON.stringify(state.doc);
-      var snap = structuredClone(state.doc);
+      var before = projectJSON();
+      var snap = structuredClone(captureProject());
       mutate();
-      if (JSON.stringify(state.doc) === before) return false;
+      if (projectJSON() === before) return false;
       pushSnapshot(snap);
       gc();
       return true;
     }
 
+    function visitImages(node, used) {
+      var pages = node && Array.isArray(node.pages) ? node.pages : (node && node.panels ? [node] : []);
+      pages.forEach(function (p) {
+        (p.panels || []).forEach(function (panel) { if (panel.image) used.add(panel.image.id); });
+      });
+      ((node && node.pages ? node.bank : node && node.bank) || []).forEach(function (item) {
+        if (item && item.id) used.add(item.id);
+      });
+    }
+
     function gc() {
       var used = new Set();
-      var docs = [state.doc].concat(state.undoStack, state.redoStack);
-      if (state.draft) docs.push(state.draft);
-      docs.forEach(function (d) {
-        d.panels.forEach(function (p) { if (p.image) used.add(p.image.id); });
-        (d.bank || []).forEach(function (item) { if (item && item.id) used.add(item.id); });
-      });
+      visitImages(captureProject(), used);
+      state.undoStack.forEach(function (snap) { visitImages(snap, used); });
+      state.redoStack.forEach(function (snap) { visitImages(snap, used); });
+      if (state.draft) visitImages(state.draft, used);
       Array.from(state.images.keys()).forEach(function (id) {
         if (!used.has(id)) state.images.delete(id);
       });
@@ -268,7 +336,7 @@
 
     function end() {
       if (!state.draft) return false;
-      var changed = JSON.stringify(state.draft) !== JSON.stringify(state.doc);
+      var changed = JSON.stringify(state.draft) !== projectJSON();
       var draft = state.draft;
       state.draft = null;
       if (changed) {
@@ -279,19 +347,19 @@
     }
 
     function begin() {
-      if (!state.draft) state.draft = structuredClone(state.doc);
+      if (!state.draft) state.draft = structuredClone(captureProject());
     }
 
     function cancelDraft() {
       if (!state.draft) return;
-      state.doc = state.draft;
+      applyProject(state.draft);
       state.draft = null;
       gc();
     }
 
     function checkpoint() {
       end();
-      pushSnapshot(structuredClone(state.doc));
+      pushSnapshot(structuredClone(captureProject()));
     }
 
     function panelById(id) {
@@ -360,8 +428,11 @@
       }
     }
 
+    state.bank = [];
+    state.pages = [];
+    state.index = 0;
     blank();
-    state.clean = JSON.stringify(state.doc);
+    state.clean = projectJSON();
 
     return {
       get doc() { return state.doc; },
@@ -374,21 +445,88 @@
       undo: function () {
         if (state.draft) { cancelDraft(); return true; }
         if (!state.undoStack.length) return false;
-        state.redoStack.push(structuredClone(state.doc));
-        state.doc = state.undoStack.pop();
+        state.redoStack.push(structuredClone(captureProject()));
+        applyProject(state.undoStack.pop());
         gc();
         return true;
       },
       redo: function () {
         end();
         if (!state.redoStack.length) return false;
-        state.undoStack.push(structuredClone(state.doc));
-        state.doc = state.redoStack.pop();
+        state.undoStack.push(structuredClone(captureProject()));
+        applyProject(state.redoStack.pop());
         gc();
         return true;
       },
-      isDirty: function () { return JSON.stringify(state.doc) !== state.clean; },
-      markClean: function () { state.clean = JSON.stringify(state.doc); },
+      isDirty: function () { return projectJSON() !== state.clean; },
+      markClean: function () { state.clean = projectJSON(); },
+      pageCount: function () { return state.pages.length; },
+      pageIndex: function () { return state.index; },
+      pageAt: function (index) { return state.pages[index] || null; },
+      projectHasWork: function () {
+        return state.pages.some(function (p) {
+          if (p.letters.length) return true;
+          if (p.panels.length !== 1 || (p.panels[0] && p.panels[0].image)) return true;
+          return false;
+        });
+      },
+      goToPage: function (index) {
+        index = Number(index);
+        if (!isFinite(index) || index < 0 || index >= state.pages.length || index === state.index) return false;
+        end();
+        state.index = index;
+        attach();
+        return true;
+      },
+      addPage: function () {
+        var created = false;
+        var ok = commitMutation(function () {
+          var page = blankPage(state.doc.page);
+          state.pages.splice(state.index + 1, 0, page);
+          state.index += 1;
+          attach();
+          created = true;
+        });
+        return ok && created;
+      },
+      duplicatePage: function () {
+        return commitMutation(function () {
+          var copy = structuredClone({
+            page: state.doc.page,
+            panels: state.doc.panels,
+            letters: state.doc.letters
+          });
+          copy.id = uid("g");
+          copy.panels.forEach(function (panel) { panel.id = uid("p"); });
+          copy.letters.forEach(function (letter) { letter.id = uid("l"); });
+          copy.bank = state.bank;
+          state.pages.splice(state.index + 1, 0, copy);
+          state.index += 1;
+          attach();
+        });
+      },
+      deletePage: function () {
+        if (state.pages.length < 2) return false;
+        return commitMutation(function () {
+          state.pages.splice(state.index, 1);
+          if (state.index >= state.pages.length) state.index = state.pages.length - 1;
+          attach();
+        });
+      },
+      movePage: function (from, to) {
+        from = Number(from);
+        to = Number(to);
+        if (!isFinite(from) || !isFinite(to) || from === to) return false;
+        if (from < 0 || to < 0 || from >= state.pages.length || to >= state.pages.length) return false;
+        return commitMutation(function () {
+          var item = state.pages.splice(from, 1)[0];
+          state.pages.splice(to, 0, item);
+          if (state.index === from) state.index = to;
+          else if (from < state.index && to >= state.index) state.index -= 1;
+          else if (from > state.index && to <= state.index) state.index += 1;
+          attach();
+        });
+      },
       bankSnapshot: function () {
         return (state.doc.bank || []).map(function (item) {
           var dataUrl = state.images.get(item.id) || "";
@@ -415,16 +553,18 @@
             height: Math.max(1, Number(item.height) || 1)
           });
         });
-        state.doc.bank = bank;
+        setBank(bank);
         gc();
       },
       newPage: function (opts) {
         var keep = !opts || opts.keepBank !== false;
         return commitMutation(function () {
-          var bank = keep ? (state.doc.bank || []).slice() : [];
-          state.doc.panels = [fullPanel()];
-          state.doc.letters = [];
-          state.doc.bank = bank;
+          var settings = state.doc.page;
+          var bank = keep ? state.bank : [];
+          state.pages = [blankPage(settings)];
+          state.index = 0;
+          setBank(bank);
+          attach();
         });
       },
       patchPage: function (partial) {
@@ -556,7 +696,7 @@
       clearBank: function () {
         if (!state.doc.bank || !state.doc.bank.length) return false;
         return commitMutation(function () {
-          state.doc.bank = [];
+          setBank([]);
         });
       },
       panImage: function (panelId, dx, dy) {
@@ -738,19 +878,24 @@
         });
       },
       toJSON: function () {
+        function packPage(doc) {
+          return {
+            page: structuredClone(doc.page),
+            panels: doc.panels.map(function (p) {
+              var image = null;
+              if (p.image && state.images.has(p.image.id)) {
+                image = Object.assign({}, p.image, { dataUrl: state.images.get(p.image.id) });
+              }
+              return { id: p.id, points: p.points, edgeCuts: p.edgeCuts, image: image };
+            }),
+            letters: structuredClone(doc.letters)
+          };
+        }
         return {
           type: "comic-studio",
-          version: 1,
-          page: structuredClone(state.doc.page),
-          panels: state.doc.panels.map(function (p) {
-            var image = null;
-            if (p.image && state.images.has(p.image.id)) {
-              image = Object.assign({}, p.image, { dataUrl: state.images.get(p.image.id) });
-            }
-            return { id: p.id, points: p.points, edgeCuts: p.edgeCuts, image: image };
-          }),
-          letters: structuredClone(state.doc.letters),
-          bank: (state.doc.bank || []).map(function (item) {
+          version: 2,
+          pages: state.pages.map(packPage),
+          bank: (state.bank || []).map(function (item) {
             var dataUrl = state.images.get(item.id);
             if (!dataUrl) return null;
             return {
@@ -765,16 +910,18 @@
       },
       loadJSON: function (raw) {
         var data = typeof raw === "string" ? JSON.parse(raw) : raw;
-        if (!data || data.type !== "comic-studio" || data.version !== 1) {
+        if (!data || data.type !== "comic-studio" || (data.version !== 1 && data.version !== 2)) {
           throw new Error("This file is not a Comic Studio project.");
         }
-        var page = data.page || {};
+        var sheets = data.version === 2 && Array.isArray(data.pages) && data.pages.length ? data.pages : [data];
+        var images = new Map();
+        var loaded = sheets.map(function (sheet) {
+        var page = sheet.page || {};
         var w = clamp(Math.round(Number(page.width)), 64, 8192);
         var h = clamp(Math.round(Number(page.height)), 64, 8192);
         if (!isFinite(w) || !isFinite(h)) throw new Error("Project page size is invalid.");
-        var images = new Map();
-        if (!Array.isArray(data.panels) || !data.panels.length) throw new Error("Project has no panels.");
-        var panels = data.panels.map(function (p, index) {
+        if (!Array.isArray(sheet.panels) || !sheet.panels.length) throw new Error("Project has no panels.");
+        var panels = sheet.panels.map(function (p, index) {
           if (!p || !Array.isArray(p.points) || p.points.length < 3) throw new Error("A panel is invalid.");
           if (!Array.isArray(p.edgeCuts) || p.edgeCuts.length !== p.points.length) throw new Error("A panel is invalid.");
           var points = p.points.map(function (pt) {
@@ -803,7 +950,7 @@
           return { id: id, points: points, edgeCuts: p.edgeCuts.slice(), image: image };
         });
         var letters = [];
-        (data.letters || []).forEach(function (src, index) {
+        (sheet.letters || []).forEach(function (src, index) {
           if (!src || !LETTER_PRESETS[src.type]) return;
           var letter = structuredClone(LETTER_PRESETS[src.type]);
           letter.id = String(src.id || ("l" + (index + 1)));
@@ -842,15 +989,19 @@
           },
           panels: panels,
           letters: letters,
-          bank: []
+          bank: state.bank,
+          id: uid("g")
         };
+        return doc;
+        });
+        var bank = [];
         if (Array.isArray(data.bank)) {
           data.bank.forEach(function (item) {
             if (!item || typeof item.dataUrl !== "string" || item.dataUrl.indexOf("data:image/") !== 0) return;
             var id = String(item.id || uid("i"));
             noteId(id);
             if (!images.has(id)) images.set(id, item.dataUrl);
-            doc.bank.push({
+            bank.push({
               id: id,
               name: bankName(item.name),
               width: Math.max(1, Number(item.width) || 1),
@@ -860,9 +1011,12 @@
         }
         checkpoint();
         images.forEach(function (url, id) { state.images.set(id, url); });
-        state.doc = doc;
+        state.pages = loaded;
+        state.index = 0;
+        setBank(bank);
+        attach();
         gc();
-        state.clean = JSON.stringify(state.doc);
+        state.clean = projectJSON();
       }
     };
   }
