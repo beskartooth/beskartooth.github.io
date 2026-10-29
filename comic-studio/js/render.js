@@ -369,7 +369,39 @@
     }
     if (!opts.ui) { ctx.restore(); return; }
 
-    if (opts.cutLine) {
+    if (opts.cutPoints && opts.cutPoints.length) {
+      var preview = opts.cutPoints.slice();
+      if (opts.cutCursor) preview.push(opts.cutCursor);
+      if (preview.length >= 2) {
+        var lastA = preview[preview.length - 2];
+        var lastB = preview[preview.length - 1];
+        doc.panels.forEach(function (panel) {
+          if (G.splitPanel(panel, lastA, lastB, "preview")) {
+            ctx.save();
+            trace(ctx, panelShape(panel, page));
+            ctx.fillStyle = "rgba(226, 162, 58, 0.16)";
+            ctx.fill();
+            ctx.restore();
+          }
+        });
+      }
+      ctx.save();
+      ctx.strokeStyle = "#e2a23a";
+      ctx.fillStyle = "#e2a23a";
+      ctx.lineWidth = 2 * unit;
+      ctx.setLineDash([7 * unit, 5 * unit]);
+      ctx.beginPath();
+      ctx.moveTo(preview[0].x, preview[0].y);
+      for (var c = 1; c < preview.length; c++) ctx.lineTo(preview[c].x, preview[c].y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      preview.forEach(function (p) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4 * unit, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    } else if (opts.cutLine) {
       doc.panels.forEach(function (panel) {
         if (G.splitPanel(panel, opts.cutLine.a, opts.cutLine.b, "preview")) {
           ctx.save();
@@ -387,6 +419,14 @@
       ctx.moveTo(opts.cutLine.a.x, opts.cutLine.a.y);
       ctx.lineTo(opts.cutLine.b.x, opts.cutLine.b.y);
       ctx.stroke();
+      ctx.restore();
+    }
+    if (opts.cutHandles && opts.cutHandles.length) {
+      ctx.save();
+      ctx.fillStyle = "#e2a23a";
+      opts.cutHandles.forEach(function (p) {
+        ctx.fillRect(p.x - 4 * unit, p.y - 4 * unit, 8 * unit, 8 * unit);
+      });
       ctx.restore();
     }
     if (opts.hoverCut) {

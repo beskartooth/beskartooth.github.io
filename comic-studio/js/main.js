@@ -19,7 +19,7 @@
   var tool = "select";
   var selection = null;
   var drag = null;
-  var cutStart = null;
+  var cutPoints = [];
   var cutCursor = null;
   var hoverCut = null;
   var dropId = null;
@@ -46,7 +46,7 @@
 
   var HINTS = {
     select: "Select: drag a picture to pan it, scroll to zoom it. Ctrl+scroll zooms the view. ? opens shortcuts.",
-    cut: "Cut: click the start, then the end. The line splits every panel it crosses. Hold Shift to snap horizontal or vertical.",
+    cut: "Cut: click to add points. Double-click or Enter finishes. Esc cancels. Shift snaps the next segment straight.",
     bubble: "Drag to place a speech bubble. The orange handle moves the tail.",
     thought: "Drag to place a thought bubble. The orange handle moves the little circles.",
     caption: "Drag to place a caption box.",
@@ -131,6 +131,51 @@
     return G.nearestCut(session.doc.panels, pt, slop);
   }
 
+  function cutVertexList() {
+    var seen = new Set();
+    var list = [];
+    session.doc.panels.forEach(function (panel) {
+      var n = panel.points.length;
+      panel.points.forEach(function (p, i) {
+        var prev = panel.edgeCuts[(i - 1 + n) % n];
+        var next = panel.edgeCuts[i];
+        if (!prev && !next) return;
+        var key = Math.round(p.x * 10) + "," + Math.round(p.y * 10);
+        if (seen.has(key)) return;
+        seen.add(key);
+        list.push({ x: p.x, y: p.y });
+      });
+    });
+    return list;
+  }
+
+  function hitCutVertex(pt) {
+    var reach = 14 * pageUnit();
+    var best = null;
+    var bestD = reach;
+    cutVertexList().forEach(function (p) {
+      var d = Math.hypot(pt.x - p.x, pt.y - p.y);
+      if (d < bestD) { bestD = d; best = p; }
+    });
+    return best;
+  }
+
+  function finishCut() {
+    if (cutPoints.length < 2) {
+      cutPoints = [];
+      cutCursor = null;
+      setStatus("A cut needs two points. Click to start again.");
+      render();
+      return;
+    }
+    var ok = session.cutPolyline(cutPoints);
+    cutPoints = [];
+    cutCursor = null;
+    setStatus(ok ? "Cut added. Switch to Select and click the gutter to merge it back." : "That line didn't split a panel. Try crossing from one edge to another.");
+    syncPageFields();
+    render();
+  }
+
   function letterCenter(letter) {
     return { x: letter.x + letter.w / 2, y: letter.y + letter.h / 2 };
   }
@@ -210,7 +255,7 @@
 
   function setTool(next) {
     tool = next;
-    cutStart = null;
+    cutPoints = [];
     cutCursor = null;
     preview = null;
     document.querySelectorAll(".tool").forEach(function (btn) {
@@ -372,7 +417,9 @@
       dropId: dropId,
       previewLetter: preview,
       hideTextId: editingId,
-      cutLine: cutStart && cutCursor ? { a: cutStart, b: cutCursor } : null
+      cutPoints: cutPoints.length ? cutPoints.slice() : null,
+      cutCursor: cutPoints.length ? cutCursor : null,
+      cutHandles: tool === "select" ? cutVertexList() : null
     });
     renderPages();
   }
@@ -834,20 +881,15 @@
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* pointer already released */ }
     var pt = eventPoint(e);
     if (tool === "cut") {
-      if (e.shiftKey && cutStart) pt = G.snapAxis(cutStart, pt);
-      if (!cutStart) {
-        cutStart = pt;
-        cutCursor = pt;
-        setStatus(HINTS.cut);
-      } else if (Math.hypot(pt.x - cutStart.x, pt.y - cutStart.y) < 8) {
-        setStatus("That cut is too short.");
-      } else {
-        var ok = session.cut(cutStart, pt);
-        cutStart = null;
-        cutCursor = null;
-        setStatus(ok ? "Cut added. Switch to Select and click the gutter to merge it back." : "That line didn't split a panel. Drag across the panel.");
-        syncPageFields();
+      var last = cutPoints.length ? cutPoints[cutPoints.length - 1] : null;
+      if (last && e.shiftKey) pt = G.snapAxis(last, pt);
+      if (last && Math.hypot(pt.x - last.x, pt.y - last.y) < 8) {
+        render();
+        return;
       }
+      cutPoints.push({ x: pt.x, y: pt.y });
+      cutCursor = { x: pt.x, y: pt.y };
+      setStatus("Point " + cutPoints.length + " added. Double-click or Enter finishes the cut. Esc cancels.");
       render();
       return;
     }
@@ -871,6 +913,13 @@
         cy: e.clientY,
         started: false
       };
+      render();
+      return;
+    }
+    var vertex = !letter && !handle ? hitCutVertex(pt) : null;
+    if (vertex) {
+      drag = { kind: "cut-vertex", current: { x: vertex.x, y: vertex.y }, cx: e.clientX, cy: e.clientY, started: false };
+      canvas.style.cursor = "move";
       render();
       return;
     }
@@ -919,8 +968,9 @@
       canvas.style.cursor = "grab";
       return;
     }
-    if (tool === "cut" && cutStart) {
-      cutCursor = e.shiftKey ? G.snapAxis(cutStart, pt) : pt;
+    if (tool === "cut" && cutPoints.length) {
+      var lastPoint = cutPoints[cutPoints.length - 1];
+      cutCursor = e.shiftKey ? G.snapAxis(lastPoint, pt) : pt;
       render();
       return;
     }
@@ -970,6 +1020,16 @@
       session.setImageRotation(drag.id, deg);
       canvas.style.cursor = "crosshair";
       updateLiveValues();
+    } else if (drag.kind === "cut-vertex") {
+      if (!drag.started && Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) > 3) {
+        drag.started = true;
+        session.begin();
+      }
+      if (drag.started) {
+        session.moveCutVertex(drag.current, pt);
+        drag.current = { x: pt.x, y: pt.y };
+      }
+      canvas.style.cursor = "move";
     } else if (drag.kind === "panel" && drag.img) {
       var panel = panelById(drag.id);
       if (panel && panel.image) {
@@ -1427,7 +1487,7 @@
     if (editingId) editor.blur();
     if (!session.goToPage(index)) return;
     selection = null;
-    cutStart = null;
+    cutPoints = [];
     cutCursor = null;
     preview = null;
     propsKey = "";
@@ -1439,7 +1499,7 @@
   }
   function afterPageEdit(message) {
     selection = null;
-    cutStart = null;
+    cutPoints = [];
     cutCursor = null;
     preview = null;
     propsKey = "";
@@ -1494,7 +1554,7 @@
   function doUndo() {
     if (editingId) { editorCancel = true; closeEditor(false); editor.blur(); editorCancel = false; }
     drag = null;
-    cutStart = null;
+    cutPoints = [];
     preview = null;
     if (!session.undo()) return;
     selectionAlive();
@@ -1858,7 +1918,7 @@
         session.loadJSON(project);
         mergeStyles(project.styles);
         selection = null;
-        cutStart = null;
+        cutPoints = [];
         preview = null;
         propsKey = "";
         pruneCache();
@@ -1876,6 +1936,11 @@
   });
 
   canvas.addEventListener("dblclick", function (e) {
+    if (tool === "cut") {
+      e.preventDefault();
+      finishCut();
+      return;
+    }
     if (tool !== "select" || e.button !== 0) return;
     var letter = hitLetter(eventPoint(e));
     if (!letter) return;
@@ -2055,6 +2120,7 @@
     "Drop pictures in the image bank, then drag them onto any panel.",
     "Press ? to open every shortcut.",
     "Save style keeps a favorite sound-effect look so you can use it again.",
+    "Click to add points on a cut, then double-click or press Enter. Drag an orange corner to bend it.",
     "Add a page from the strip under the canvas. Each page keeps its own panels and lettering.",
     "The image bank and saved styles are shared by every page. Copy and paste works across pages."
   ];
@@ -2411,11 +2477,16 @@
       openShortcuts();
       return;
     }
+    if (e.key === "Enter" && cutPoints.length) {
+      e.preventDefault();
+      finishCut();
+      return;
+    }
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       deleteSelection();
     } else if (e.key === "Escape") {
-      if (cutStart) { cutStart = null; cutCursor = null; setStatus("Cut cancelled."); render(); }
+      if (cutPoints.length) { cutPoints = []; cutCursor = null; setStatus("Cut cancelled."); render(); }
       else setTool("select");
     } else if ((e.ctrlKey || e.metaKey) && !e.altKey && (key === "c" || key === "x" || key === "d")) {
       if (editingId) return;
@@ -2599,7 +2670,7 @@
 
   function refreshAfterPageChange(message) {
     selection = null;
-    cutStart = null;
+    cutPoints = [];
     cutCursor = null;
     preview = null;
     propsKey = "";
