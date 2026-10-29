@@ -773,6 +773,31 @@
     selProps.appendChild(field("Rotation", rot));
     bindGesture(rot, function () { session.updateLetter(letter.id, { rotation: Number(rot.value) }); });
 
+    var warp = document.createElement("select");
+    [["", "None"], ["arc", "Arc"], ["wave", "Wave"], ["bulge", "Bulge"]].forEach(function (pair) {
+      var opt = document.createElement("option");
+      opt.value = pair[0];
+      opt.textContent = pair[1];
+      warp.appendChild(opt);
+    });
+    warp.value = letter.warp === "arc" || letter.warp === "wave" || letter.warp === "bulge" ? letter.warp : "";
+    selProps.appendChild(field("Warp", warp));
+    warp.addEventListener("change", function () {
+      session.begin();
+      session.updateLetter(letter.id, { warp: warp.value || "none" });
+      session.end();
+      render();
+    });
+    var warpAmt = document.createElement("input");
+    warpAmt.type = "range";
+    warpAmt.min = "-100";
+    warpAmt.max = "100";
+    warpAmt.value = String(Math.round(letter.warpAmount || 0));
+    selProps.appendChild(field("Warp strength", warpAmt));
+    bindGesture(warpAmt, function () {
+      session.updateLetter(letter.id, { warpAmount: Number(warpAmt.value) });
+    });
+
     var actions = document.createElement("div");
     actions.className = "prop-actions";
     actions.appendChild(button("Delete", "danger", function () {
@@ -793,7 +818,7 @@
     letter.y = cy - letter.h / 2;
   }
 
-  function applyHandle(state, pt, shift) {
+  function applyHandle(state, pt, shift, alt, ctrl) {
     var letter = letterById(state.id);
     if (!letter) return;
     var c = letterCenter(state.start);
@@ -812,6 +837,21 @@
       var deg = state.start.rotation + (ang - state.angle) * 180 / Math.PI;
       if (shift) deg = Math.round(deg / 15) * 15;
       session.updateLetter(letter.id, { rotation: deg });
+      return;
+    }
+    if ((alt || ctrl) && state.handle !== "tail" && state.handle !== "rotate") {
+      var dragX = pt.x - state.origin.x;
+      var dragY = pt.y - state.origin.y;
+      if (alt && !ctrl) {
+        session.updateLetter(letter.id, {
+          skewX: (state.start.skewX || 0) + dragY,
+          skewY: (state.start.skewY || 0) + dragX
+        });
+      } else {
+        session.updateLetter(letter.id, {
+          perspective: Math.max(-1, Math.min(1, (state.start.perspective || 0) + dragY / Math.max(state.start.h, 1)))
+        });
+      }
       return;
     }
     var rot = state.start.rotation * Math.PI / 180;
@@ -1012,7 +1052,7 @@
       letter.y = drag.start.y + (pt.y - drag.origin.y);
       clampLetter(letter);
     } else if (drag.kind === "handle") {
-      applyHandle(drag, pt, e.shiftKey);
+      applyHandle(drag, pt, e.shiftKey, e.altKey, e.ctrlKey || e.metaKey);
     } else if (drag.kind === "image-rotate") {
       var ang = Math.atan2(pt.y - drag.oy, pt.x - drag.ox);
       var deg = drag.rotation + (ang - drag.angle) * 180 / Math.PI;
@@ -2121,6 +2161,7 @@
     "Press ? to open every shortcut.",
     "Save style keeps a favorite sound-effect look so you can use it again.",
     "Click to add points on a cut, then double-click or press Enter. Drag an orange corner to bend it.",
+    "Arc, wave, or bulge lettering from the side panel. Alt-drag a corner to skew the words.",
     "Add a page from the strip under the canvas. Each page keeps its own panels and lettering.",
     "The image bank and saved styles are shared by every page. Copy and paste works across pages."
   ];
@@ -2206,6 +2247,11 @@
       shapeStroke: styleHex(raw.shapeStroke, "#161616"),
       shapeStrokeWidth: Math.max(0, Math.min(48, Number(raw.shapeStrokeWidth) || 0)),
       rotation: Number(raw.rotation) || 0,
+      warp: raw.warp === "arc" || raw.warp === "wave" || raw.warp === "bulge" ? raw.warp : "",
+      warpAmount: Math.max(-100, Math.min(100, Number(raw.warpAmount) || 0)),
+      skewX: Math.max(-400, Math.min(400, Number(raw.skewX) || 0)),
+      skewY: Math.max(-400, Math.min(400, Number(raw.skewY) || 0)),
+      perspective: Math.max(-1, Math.min(1, Number(raw.perspective) || 0)),
       tail: raw.tail && typeof raw.tail === "object" ? { dx: Number(raw.tail.dx) || 0, dy: Number(raw.tail.dy) || 0 } : null
     };
   }
@@ -2251,6 +2297,11 @@
       shapeStroke: letter.shapeStroke,
       shapeStrokeWidth: letter.shapeStrokeWidth,
       rotation: letter.rotation || 0,
+      warp: letter.warp || "",
+      warpAmount: letter.warpAmount || 0,
+      skewX: letter.skewX || 0,
+      skewY: letter.skewY || 0,
+      perspective: letter.perspective || 0,
       tail: letter.tail ? { dx: letter.tail.dx, dy: letter.tail.dy } : null
     });
   }
