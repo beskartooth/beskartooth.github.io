@@ -4,12 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Comic Studio is a free comic page maker that runs entirely in your browser. Images stay on your device.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<!-- GoatCounter stays off while js/config.js GOATCOUNTER_CODE is empty.
-     When that constant is set, change this policy to:
-     script-src 'self' https://YOURCODE.goatcounter.com
-     connect-src https://YOURCODE.goatcounter.com
-     Leave img-src unchanged so pictures never leave this device. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src https://abacus.jasoncameron.dev; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Comic Studio</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/studio.css">
@@ -237,7 +232,6 @@
 <script src="js/document.js"></script>
 <script src="js/render.js"></script>
 <script src="js/main.js"></script>
-<script src="../js/config.js"></script>
 <script src="../js/analytics.js"></script>
 </body>
 </html>
