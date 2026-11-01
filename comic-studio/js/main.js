@@ -20,6 +20,7 @@
   var selection = null;
   var drag = null;
   var cutPoints = [];
+  var cutSnap = null;
   var cutCursor = null;
   var hoverCut = null;
   var selectedSeg = null;
@@ -200,19 +201,40 @@
     return best;
   }
 
-  function finishCut() {
+  function snapRadius() { return 28 * pageUnit(); }
+
+  function snapCutPoint(pt) {
+    return G.snapToEdge(session.doc.panels, pt, snapRadius());
+  }
+
+  function finishCut(keepTool) {
     if (cutPoints.length < 2) {
       cutPoints = [];
       cutCursor = null;
+      cutSnap = null;
       setStatus("A cut needs two points. Click to start again.");
       render();
       return;
     }
-    var ok = session.cutPolyline(cutPoints);
+    var ok = session.cutPolyline(cutPoints, snapRadius());
     cutPoints = [];
     cutCursor = null;
-    setStatus(ok ? "Cut added. Switch to Select and click the gutter to merge it back." : "That line didn't split a panel. Try crossing from one edge to another.");
-    syncPageFields();
+    cutSnap = null;
+    if (ok && !keepTool) {
+      setTool("select");
+      setStatus("Cut added.");
+      return;
+    }
+    setStatus(ok ? "Cut added. Shift kept the Cut tool on." : "That line didn't split a panel. Try crossing from one edge to another.");
+    render();
+  }
+
+  function deselectAll() {
+    selection = null;
+    selectedSeg = null;
+    hoverSeg = null;
+    hoverCut = null;
+    syncProps();
     render();
   }
 
@@ -297,6 +319,7 @@
     tool = next;
     cutPoints = [];
     cutCursor = null;
+    cutSnap = null;
     preview = null;
     document.querySelectorAll(".tool").forEach(function (btn) {
       btn.setAttribute("aria-pressed", btn.getAttribute("data-tool") === next ? "true" : "false");
@@ -459,6 +482,7 @@
       hideTextId: editingId,
       cutPoints: cutPoints.length ? cutPoints.slice() : null,
       cutCursor: cutPoints.length ? cutCursor : null,
+      cutSnap: cutSnap,
       cutHandles: cutEditHandles()
     });
     renderPages();
@@ -962,13 +986,15 @@
     var pt = eventPoint(e);
     if (tool === "cut") {
       var last = cutPoints.length ? cutPoints[cutPoints.length - 1] : null;
-      if (last && e.shiftKey) pt = G.snapAxis(last, pt);
-      if (last && Math.hypot(pt.x - last.x, pt.y - last.y) < 8) {
+      var aim = last && e.shiftKey ? G.snapAxis(last, pt) : pt;
+      if (!last) aim = snapCutPoint(aim);
+      if (last && Math.hypot(aim.x - last.x, aim.y - last.y) < 8) {
         render();
         return;
       }
-      cutPoints.push({ x: pt.x, y: pt.y });
-      cutCursor = { x: pt.x, y: pt.y };
+      cutPoints.push({ x: aim.x, y: aim.y });
+      cutCursor = { x: aim.x, y: aim.y };
+      cutSnap = null;
       setStatus("Point " + cutPoints.length + " added. Double-click or Enter finishes the cut. Esc cancels.");
       render();
       return;
@@ -1062,9 +1088,12 @@
       canvas.style.cursor = "grab";
       return;
     }
-    if (tool === "cut" && cutPoints.length) {
-      var lastPoint = cutPoints[cutPoints.length - 1];
-      cutCursor = e.shiftKey ? G.snapAxis(lastPoint, pt) : pt;
+    if (tool === "cut") {
+      var aim = pt;
+      if (cutPoints.length && e.shiftKey) aim = G.snapAxis(cutPoints[cutPoints.length - 1], pt);
+      var snapped = snapCutPoint(aim);
+      cutSnap = Math.hypot(snapped.x - aim.x, snapped.y - aim.y) > 0.4 ? snapped : null;
+      cutCursor = cutPoints.length ? snapped : null;
       render();
       return;
     }
@@ -1479,6 +1508,7 @@
     syncPageFields();
     syncProps();
     render();
+    setTool("select");
     var skipped = attempted > infos.length ? " Some files were skipped." : "";
     if (panelId) setStatus("Added " + ids.length + " to the bank and placed one in the panel." + skipped);
     else setStatus("Added " + ids.length + (ids.length === 1 ? " image" : " images") + " to the bank." + skipped);
@@ -1805,6 +1835,7 @@
       if (!letter) { setStatus("Could not paste lettering."); return false; }
       clip.pasteCount = step;
       select({ type: "letter", id: letter.id });
+      setTool("select");
       refreshEdited("Pasted lettering.");
       return true;
     }
@@ -1822,6 +1853,7 @@
     }
     clip.pasteCount = step;
     select({ type: "panel", id: targetId });
+    setTool("select");
     var same = targetId === clip.sourcePanelId;
     refreshEdited(same ? "Pasted the picture, nudged so you can see it." : "Pasted the picture into this panel.");
     return true;
@@ -2058,7 +2090,7 @@
   canvas.addEventListener("dblclick", function (e) {
     if (tool === "cut") {
       e.preventDefault();
-      finishCut();
+      finishCut(e.shiftKey);
       return;
     }
     if (tool !== "select" || e.button !== 0) return;
@@ -2112,7 +2144,11 @@
     try { stage.setPointerCapture(e.pointerId); } catch (err) { /* already captured */ }
   }
   stage.addEventListener("pointerdown", function (e) {
-    if (e.button === 1 || (e.button === 0 && spaceDown)) startViewPan(e);
+    if (e.button === 1 || (e.button === 0 && spaceDown)) { startViewPan(e); return; }
+    if (e.button !== 0) return;
+    var t = e.target;
+    if (t === canvas || (t.closest && t.closest("canvas, #view-controls, button, a, input, select, label"))) return;
+    deselectAll();
   }, true);
   stage.addEventListener("pointermove", function (e) {
     if (!viewPan || e.pointerId !== viewPan.id) return;
@@ -2170,6 +2206,7 @@
       session.placeBankImage(panel.id, bankId);
       select({ type: "panel", id: panel.id });
       propsKey = "";
+      setTool("select");
       setStatus("Placed from the image bank.");
       syncPageFields();
       syncProps();
@@ -2235,7 +2272,8 @@
     "Alt+scroll rotates. Shift+Alt snaps to 15°.",
     "Ctrl+scroll over a picture zooms it toward the pointer.",
     "Hold Shift while cutting to snap the cut straight.",
-    "Click a gutter to merge the panels it separates.",
+    "Cut ends snap to a nearby edge or corner. Hold Shift while you finish a cut to keep the Cut tool.",
+    "Click empty space around the page, or press Esc, to clear the selection.",
     "Ctrl+0 fits the page. Ctrl+1 is 100%.",
     "Drop pictures in the image bank, then drag them onto any panel.",
     "Press ? to open every shortcut.",
@@ -2248,7 +2286,7 @@
   var TOUR = [
     {
       title: "1 of 4 · Cuts and layouts",
-      body: "Use Cut to split a panel. Layouts drop in a starter grid. Hold Shift to snap a cut straight.",
+      body: "Use Cut to split a panel. Endpoints snap to a nearby edge or corner. Finishing returns to Select unless you hold Shift.",
       targets: ["#tools"]
     },
     {
@@ -2610,15 +2648,15 @@
     }
     if (e.key === "Enter" && cutPoints.length) {
       e.preventDefault();
-      finishCut();
+      finishCut(e.shiftKey);
       return;
     }
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       deleteSelection();
     } else if (e.key === "Escape") {
-      if (cutPoints.length) { cutPoints = []; cutCursor = null; setStatus("Cut cancelled."); render(); }
-      else setTool("select");
+      if (cutPoints.length) { cutPoints = []; cutCursor = null; cutSnap = null; setStatus("Cut cancelled."); render(); }
+      else { deselectAll(); setTool("select"); }
     } else if ((e.ctrlKey || e.metaKey) && !e.altKey && (key === "c" || key === "x" || key === "d")) {
       if (editingId) return;
       e.preventDefault();

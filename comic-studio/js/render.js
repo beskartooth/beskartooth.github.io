@@ -465,6 +465,15 @@
         ctx.arc(p.x, p.y, 4 * unit, 0, Math.PI * 2);
         ctx.fill();
       });
+      if (opts.cutSnap) {
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(opts.cutSnap.x, opts.cutSnap.y, 6 * unit, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.lineWidth = 2 * unit;
+        ctx.stroke();
+      }
       ctx.restore();
     } else if (opts.cutLine) {
       doc.panels.forEach(function (panel) {

@@ -623,11 +623,12 @@
         gc();
         return true;
       },
-      cutPolyline: function (points) {
+      cutPolyline: function (points, snapDist) {
         if (!points || points.length < 2) return false;
         var pts = points.map(function (p) { return { x: p.x, y: p.y }; });
-        pts[0] = G.snapToEdge(state.doc.panels, pts[0], 10);
-        pts[pts.length - 1] = G.snapToEdge(state.doc.panels, pts[pts.length - 1], 10);
+        var radius = snapDist == null ? 10 : snapDist;
+        pts[0] = G.snapToEdge(state.doc.panels, pts[0], radius);
+        pts[pts.length - 1] = G.snapToEdge(state.doc.panels, pts[pts.length - 1], radius);
         var cutId = uid("c");
         var res = G.applyPolyline(state.doc.panels, pts, cutId);
         if (!res.count) return false;
