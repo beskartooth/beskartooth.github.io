@@ -697,6 +697,7 @@ function cleanupCollinear(poly, others) {
   function snapToEdge(panels, pt, maxDist) {
     var best = null;
     var bestD = maxDist;
+    var bestEdge = null;
     for (var i = 0; i < panels.length; i++) {
       var poly = panels[i];
       var n = poly.points.length;
@@ -710,11 +711,19 @@ function cleanupCollinear(poly, others) {
         var len2 = dx * dx + dy * dy;
         if (len2 < 1e-8) continue;
         var t = Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / len2));
+        var proj = { x: a.x + dx * t, y: a.y + dy * t };
+        var cornerReach = maxDist;
+        var end = null;
+        var da = Math.hypot(proj.x - a.x, proj.y - a.y);
+        var db = Math.hypot(proj.x - b.x, proj.y - b.y);
+        if (da <= db && da <= cornerReach && Math.hypot(pt.x - a.x, pt.y - a.y) <= maxDist) end = a;
+        else if (db < da && db <= cornerReach && Math.hypot(pt.x - b.x, pt.y - b.y) <= maxDist) end = b;
         bestD = d;
-        best = { x: a.x + dx * t, y: a.y + dy * t };
+        best = end ? { x: end.x, y: end.y } : proj;
+        bestEdge = true;
       }
     }
-    return best || { x: pt.x, y: pt.y };
+    return bestEdge ? best : { x: pt.x, y: pt.y };
   }
 
   function incidentCuts(panels, pt) {

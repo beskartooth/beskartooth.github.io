@@ -36,6 +36,17 @@ assert.strictEqual(session.deleteCut(cutIds[0]), true);
 assert.strictEqual(session.doc.panels.length, 1, "removing the gutter merges the page");
 assert.strictEqual(session.cutPolyline([{ x: 10, y: 10 }, { x: 12, y: 12 }]), false);
 
+var G = require("../js/geometry.js");
+var snapPage = Doc.createSession();
+snapPage.setPageSize(200, 160);
+var corner = G.snapToEdge(snapPage.doc.panels, { x: 14, y: 9 }, 20);
+assert.ok(Math.hypot(corner.x, corner.y) < 0.2, "near a corner snaps flush to the corner");
+var edge = G.snapToEdge(snapPage.doc.panels, { x: 100, y: 12 }, 20);
+assert.ok(Math.abs(edge.y) < 0.2 && Math.abs(edge.x - 100) < 0.2, "near an edge snaps onto the edge");
+var far = G.snapToEdge(snapPage.doc.panels, { x: 100, y: 50 }, 20);
+assert.strictEqual(far.x, 100);
+assert.strictEqual(far.y, 50);
+
 var bent = Doc.createSession();
 bent.setPageSize(240, 180);
 assert.strictEqual(bent.cutPolyline([
