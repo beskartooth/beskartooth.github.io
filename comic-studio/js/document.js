@@ -165,11 +165,28 @@
     });
     doc.page.gutter *= s;
     doc.page.border.width *= s;
+    if (doc.page.dots) doc.page.dots = normalizeDots({
+      enabled: doc.page.dots.enabled,
+      size: doc.page.dots.size * s,
+      strength: doc.page.dots.strength
+    });
     doc.page.width = nw;
     doc.page.height = nh;
   }
 
   function isHex(c) { return typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c); }
+
+  function normalizeDots(src) {
+    var size = src && src.size != null ? Number(src.size) : 6;
+    var strength = src && src.strength != null ? Number(src.strength) : 85;
+    if (!isFinite(size)) size = 6;
+    if (!isFinite(strength)) strength = 85;
+    return {
+      enabled: !!(src && src.enabled),
+      size: clamp(Math.round(size), 3, 22),
+      strength: clamp(Math.round(strength), 0, 100)
+    };
+  }
 
   function createSession() {
     var state = {
@@ -205,7 +222,8 @@
             enabled: !border || border.enabled !== false,
             color: border && isHex(border.color) ? border.color : "#111111",
             width: border && border.width != null ? border.width : 4
-          }
+          },
+          dots: normalizeDots(settings && settings.dots)
         },
         panels: [{
           id: uid("p"),
@@ -588,6 +606,15 @@
           if (partial.border.width != null && isFinite(partial.border.width)) {
             b.width = clamp(Number(partial.border.width), 0, 48);
           }
+        }
+        if (partial.dots) {
+          var prev = state.doc.page.dots || normalizeDots(null);
+          var next = {
+            enabled: partial.dots.enabled != null ? partial.dots.enabled : prev.enabled,
+            size: partial.dots.size != null ? partial.dots.size : prev.size,
+            strength: partial.dots.strength != null ? partial.dots.strength : prev.strength
+          };
+          state.doc.page.dots = normalizeDots(next);
         }
       },
       setPageSize: function (w, h) {
@@ -1077,7 +1104,8 @@
               enabled: !page.border || page.border.enabled !== false,
               color: page.border && isHex(page.border.color) ? page.border.color : "#111111",
               width: clamp(page.border ? Number(page.border.width) : 4, 0, 48)
-            }
+            },
+            dots: normalizeDots(page.dots)
           },
           panels: panels,
           letters: letters,

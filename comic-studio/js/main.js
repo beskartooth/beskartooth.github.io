@@ -507,6 +507,12 @@
     if (document.activeElement !== $("border-color")) $("border-color").value = page.border.color;
     if (document.activeElement !== $("border-width")) $("border-width").value = String(Math.round(page.border.width));
     $("border-val").textContent = Math.round(page.border.width) + " px";
+    var dots = page.dots || { enabled: false, size: 6, strength: 85 };
+    $("dots-on").checked = !!dots.enabled;
+    if (document.activeElement !== $("dots-size")) $("dots-size").value = String(Math.round(dots.size));
+    if (document.activeElement !== $("dots-strength")) $("dots-strength").value = String(Math.round(dots.strength));
+    $("dots-size-val").textContent = Math.round(dots.size) + " px";
+    $("dots-strength-val").textContent = Math.round(dots.strength) + "%";
     metaEl.textContent = "Page " + (session.pageIndex() + 1) + " of " + session.pageCount()
       + " · " + Math.round(page.width) + "×" + Math.round(page.height)
       + " · " + session.doc.panels.length + " panels";
@@ -2034,6 +2040,20 @@
     session.patchPage({ border: { width: Number($("border-width").value) } });
     $("border-val").textContent = Math.round(session.doc.page.border.width) + " px";
   });
+  $("dots-on").addEventListener("change", function () {
+    session.begin();
+    session.patchPage({ dots: { enabled: $("dots-on").checked } });
+    session.end();
+    render();
+  });
+  bindGesture($("dots-size"), function () {
+    session.patchPage({ dots: { size: Number($("dots-size").value) } });
+    $("dots-size-val").textContent = Math.round(session.doc.page.dots.size) + " px";
+  });
+  bindGesture($("dots-strength"), function () {
+    session.patchPage({ dots: { strength: Number($("dots-strength").value) } });
+    $("dots-strength-val").textContent = Math.round(session.doc.page.dots.strength) + "%";
+  });
 
   $("undo").addEventListener("click", doUndo);
   $("redo").addEventListener("click", doRedo);
@@ -2282,7 +2302,8 @@
     "Hover a gutter, then drag its handles to bend the cut. Delete removes only that segment.",
     "Arc, wave, or bulge lettering from the side panel. Alt-drag a corner to skew the words.",
     "Add a page from the strip under the canvas. Each page keeps its own panels and lettering.",
-    "The image bank and saved styles are shared by every page. Copy and paste works across pages."
+    "The image bank and saved styles are shared by every page. Copy and paste works across pages.",
+    "Halftone dots in the side panel turns pictures into a printed color screen. Lettering stays solid."
   ];
   var TOUR = [
     {
