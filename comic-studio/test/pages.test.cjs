@@ -77,4 +77,23 @@ assert.strictEqual(next.pageCount(), 2);
 assert.strictEqual(next.pageAt(1).letters[0].type, "sfx");
 assert.strictEqual(next.pageAt(0).letters[0].text, "Old file");
 
+assert.strictEqual(session.doc.page.dots.enabled, false);
+assert.strictEqual(session.doc.page.dots.size, 6);
+session.patchPage({ dots: { enabled: true, size: 10, strength: 40 } });
+var dotted = JSON.parse(JSON.stringify(session.toJSON()));
+assert.strictEqual(dotted.pages[session.pageIndex()].page.dots.enabled, true);
+assert.strictEqual(dotted.pages[session.pageIndex()].page.dots.size, 10);
+assert.strictEqual(dotted.pages[session.pageIndex()].page.dots.strength, 40);
+var legacy = JSON.parse(JSON.stringify(session.toJSON()));
+delete legacy.pages[0].page.dots;
+delete legacy.pages[1].page.dots;
+var old = Doc.createSession();
+old.loadJSON(legacy);
+assert.strictEqual(old.doc.page.dots.enabled, false);
+assert.strictEqual(old.doc.page.dots.size, 6);
+old.patchPage({ dots: { enabled: true, size: 8, strength: 90 } });
+old.setPageSize(old.doc.page.width * 2, old.doc.page.height * 2);
+assert.strictEqual(old.doc.page.dots.enabled, true);
+assert.ok(old.doc.page.dots.size > 8 && old.doc.page.dots.size <= 22);
+
 console.log("pages tests passed");

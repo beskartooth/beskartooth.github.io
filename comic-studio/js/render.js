@@ -48,6 +48,164 @@
     return scale > 1e-6 ? 1 / scale : 1;
   }
 
+  function dotSettings(page) {
+    var d = page && page.dots;
+    if (!d || !d.enabled) return null;
+    var size = Number(d.size);
+    var strength = Number(d.strength);
+    if (!isFinite(size)) size = 6;
+    if (!isFinite(strength)) strength = 85;
+    size = Math.max(3, Math.min(22, size));
+    strength = Math.max(0, Math.min(100, strength)) / 100;
+    if (strength <= 0.001) return null;
+    return { size: size, strength: strength };
+  }
+
+  function paintPlacedImage(ctx, img, placed) {
+    var w = img.naturalWidth * placed.scale;
+    var h = img.naturalHeight * placed.scale;
+    ctx.translate(placed.cx, placed.cy);
+    ctx.rotate((placed.rotation || 0) * Math.PI / 180);
+    ctx.scale(placed.flipX ? -1 : 1, placed.flipY ? -1 : 1);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  }
+
+  // Clustered CMYK dots. Coverage sets the radius, so shadows print bigger dots
+  // and highlights fall back to paper. Angles are the usual process set.
+  function screenBitmap(canvas, originX, originY, pitch, strength) {
+    var w = canvas.width;
+    var h = canvas.height;
+    var ctx = canvas.getContext("2d", { willReadFrequently: true });
+    var image = ctx.getImageData(0, 0, w, h);
+    var d = image.data;
+    var inv = 1 / pitch;
+    var edge = inv;
+    if (edge > 0.42) edge = 0.42;
+    var gain = 0.35 + 0.65 * strength;
+    var keep = 1 - strength;
+    var diag = 1.41421356237;
+    var c15 = Math.cos(15 * Math.PI / 180);
+    var s15 = Math.sin(15 * Math.PI / 180);
+    var c75 = Math.cos(75 * Math.PI / 180);
+    var s75 = Math.sin(75 * Math.PI / 180);
+    var c45 = Math.cos(Math.PI / 4);
+    var s45 = Math.sin(Math.PI / 4);
+    for (var y = 0; y < h; y++) {
+      var gy = originY + y;
+      var row = y * w * 4;
+      for (var x = 0; x < w; x++) {
+        var i = row + x * 4;
+        var a = d[i + 3];
+        if (a < 8) continue;
+        var r = d[i] / 255;
+        var g = d[i + 1] / 255;
+        var b = d[i + 2] / 255;
+        var max = r > g ? (r > b ? r : b) : (g > b ? g : b);
+        var k0 = 1 - max;
+        var denom = 1 - k0;
+        var C = (denom < 1e-4 ? 0 : (1 - r - k0) / denom) * gain;
+        var M = (denom < 1e-4 ? 0 : (1 - g - k0) / denom) * gain;
+        var Y = (denom < 1e-4 ? 0 : (1 - b - k0) / denom) * gain;
+        k0 *= gain;
+        var gx = originX + x;
+        var inkR = 1;
+        var inkG = 1;
+        var inkB = 1;
+        var u = (gx * c15 + gy * s15) * inv;
+        var v = (-gx * s15 + gy * c15) * inv;
+        var dx = (u - Math.floor(u)) - 0.5;
+        var dy = (v - Math.floor(v)) - 0.5;
+        var dist = Math.sqrt(dx * dx + dy * dy) * diag;
+        var fade = (C - dist) / edge;
+        if (fade > 0) {
+          if (fade > 1) fade = 1;
+          inkR *= 1 - fade;
+        }
+        u = (gx * c75 + gy * s75) * inv;
+        v = (-gx * s75 + gy * c75) * inv;
+        dx = (u - Math.floor(u)) - 0.5;
+        dy = (v - Math.floor(v)) - 0.5;
+        dist = Math.sqrt(dx * dx + dy * dy) * diag;
+        fade = (M - dist) / edge;
+        if (fade > 0) {
+          if (fade > 1) fade = 1;
+          inkG *= 1 - fade;
+        }
+        u = gx * inv;
+        v = gy * inv;
+        dx = (u - Math.floor(u)) - 0.5;
+        dy = (v - Math.floor(v)) - 0.5;
+        dist = Math.sqrt(dx * dx + dy * dy) * diag;
+        fade = (Y - dist) / edge;
+        if (fade > 0) {
+          if (fade > 1) fade = 1;
+          inkB *= 1 - fade;
+        }
+        u = (gx * c45 + gy * s45) * inv;
+        v = (-gx * s45 + gy * c45) * inv;
+        dx = (u - Math.floor(u)) - 0.5;
+        dy = (v - Math.floor(v)) - 0.5;
+        dist = Math.sqrt(dx * dx + dy * dy) * diag;
+        fade = (k0 - dist) / edge;
+        if (fade > 0) {
+          if (fade > 1) fade = 1;
+          var nk = 1 - fade;
+          inkR *= nk;
+          inkG *= nk;
+          inkB *= nk;
+        }
+        d[i] = d[i] * keep + inkR * 255 * strength;
+        d[i + 1] = d[i + 1] * keep + inkG * 255 * strength;
+        d[i + 2] = d[i + 2] * keep + inkB * 255 * strength;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+  }
+
+  var dotCache = new Map();
+  function screenedImage(ctx, img, placed, clipShape, settings) {
+    var scale = 1 / devicePixel(ctx);
+    var b = G.bounds(clipShape);
+    var pad = 2;
+    var x0 = Math.floor(b.x * scale) - pad;
+    var y0 = Math.floor(b.y * scale) - pad;
+    var cw = Math.max(1, Math.ceil((b.x + b.w) * scale) + pad - x0);
+    var ch = Math.max(1, Math.ceil((b.y + b.h) * scale) + pad - y0);
+    var pts = "";
+    for (var p = 0; p < clipShape.length; p++) {
+      pts += Math.round(clipShape[p].x) + "," + Math.round(clipShape[p].y) + ";";
+    }
+    var key = [
+      placed.id, img.naturalWidth, img.naturalHeight,
+      Math.round(placed.cx * 10), Math.round(placed.cy * 10),
+      Math.round(placed.scale * 1000), Math.round((placed.rotation || 0) * 10),
+      placed.flipX ? 1 : 0, placed.flipY ? 1 : 0,
+      settings.size, Math.round(settings.strength * 100), Math.round(scale * 100),
+      cw, ch, pts
+    ].join("|");
+    var off = dotCache.get(key);
+    if (!off) {
+      off = document.createElement("canvas");
+      off.width = cw;
+      off.height = ch;
+      var octx = off.getContext("2d", { willReadFrequently: true });
+      octx.setTransform(scale, 0, 0, scale, -x0, -y0);
+      octx.beginPath();
+      addLoop(octx, clipShape, false);
+      octx.clip();
+      paintPlacedImage(octx, img, placed);
+      screenBitmap(off, x0, y0, Math.max(1.5, settings.size * scale), settings.strength);
+      dotCache.set(key, off);
+      if (dotCache.size > 8) dotCache.delete(dotCache.keys().next().value);
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(off, x0, y0);
+    ctx.restore();
+  }
+
   function panelShape(panel, page) {
     return G.insetPolygon(panel, page) || panel.points;
   }
@@ -410,17 +568,16 @@
       if (panel.image) {
         var img = getImage(panel.image.id);
         if (img && img.complete && img.naturalWidth) {
-          ctx.save();
-          trace(ctx, clipShape);
-          ctx.clip();
-          var w = img.naturalWidth * panel.image.scale;
-          var h = img.naturalHeight * panel.image.scale;
-          var placed = panel.image;
-          ctx.translate(placed.cx, placed.cy);
-          ctx.rotate((placed.rotation || 0) * Math.PI / 180);
-          ctx.scale(placed.flipX ? -1 : 1, placed.flipY ? -1 : 1);
-          ctx.drawImage(img, -w / 2, -h / 2, w, h);
-          ctx.restore();
+          var dots = dotSettings(page);
+          if (dots) {
+            screenedImage(ctx, img, panel.image, clipShape, dots);
+          } else {
+            ctx.save();
+            trace(ctx, clipShape);
+            ctx.clip();
+            paintPlacedImage(ctx, img, panel.image);
+            ctx.restore();
+          }
         }
       }
       if (inner) {

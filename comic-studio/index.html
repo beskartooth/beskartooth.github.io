@@ -106,6 +106,15 @@
           <input id="border-width" type="range" min="0" max="40" step="1">
         </label>
       </div>
+      <h2>Print</h2>
+      <label class="check"><input id="dots-on" type="checkbox"> Halftone dots</label>
+      <label>Dot size <span id="dots-size-val"></span>
+        <input id="dots-size" type="range" min="3" max="22" step="1" value="6">
+      </label>
+      <label>Strength <span id="dots-strength-val"></span>
+        <input id="dots-strength" type="range" min="0" max="100" step="1" value="85">
+      </label>
+      <p class="hint">Color Ben-Day screen on the pictures. Dot size follows the tone. Gutters, borders, and lettering stay solid.</p>
       <h2>Selection</h2>
       <div id="sel-props"></div>
     </aside>
