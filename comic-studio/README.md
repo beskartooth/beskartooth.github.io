@@ -14,7 +14,8 @@ Comic Studio is 100% client-side.
 - Saving a project writes one `.json` file onto your device. Images are embedded in that file, including the image bank. Nothing is sent anywhere.
 - The image bank is also kept in this browser with IndexedDB so a reload does not clear it. That storage never leaves the device.
 - PNG and JPG export downloads a picture of the page. The file stays on your device.
-- There are no analytics, no accounts, no remote fonts, and no third-party scripts. The fonts in `fonts/` are files in this folder.
+- There are no accounts, no remote fonts, and no third-party scripts. The fonts in `fonts/` are files in this folder.
+- Share on X opens X’s post composer with a link to this page and `#MadeWithComicStudio`. The comic and the project stay on your device.
 
 The page sets a Content Security Policy that blocks network requests.
 
