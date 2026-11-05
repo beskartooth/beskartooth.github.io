@@ -368,6 +368,19 @@ function mulberry32(a) {
   assert(s.doc.bank.length === 1 && s.images.has(bankId), "undo restores bank bytes");
 }
 
+{
+  const rect = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 80 }, { x: 0, y: 80 }];
+  const inner = G.insetPoints(rect, 6);
+  assert(inner && inner.length === 4, "uniform inset");
+  const b = G.bounds(inner);
+  assert(near(b.x, 6, 0.2) && near(b.y, 6, 0.2), "inset origin " + b.x + "," + b.y);
+  assert(near(b.w, 88, 0.2) && near(b.h, 68, 0.2), "inset size");
+  const grown = G.insetPoints(rect, -2);
+  assert(grown && grown.length === 4, "uniform expand");
+  const gb = G.bounds(grown);
+  assert(near(gb.x, -2, 0.2) && near(gb.w, 104, 0.2), "expand size " + gb.x + " " + gb.w);
+}
+
 if (failed) {
   console.error(failed + " assertion(s) failed");
   process.exit(1);

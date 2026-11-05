@@ -90,6 +90,9 @@ These open-licensed fonts are stored in this folder. Licenses are SIL Open Font 
 
 - Comic Neue — Craig Rozynski and contributors (`fonts/comic-neue/OFL.txt`)
 - Bangers — Vernon Adams and contributors (`fonts/bangers/OFL.txt`)
+- Knewave — Tyler Finck (`fonts/knewave/OFL.txt`)
+- Boogaloo — John Vargas Beltrán (`fonts/boogaloo/OFL.txt`)
+- Sigmar One — The Sigmar One Project Authors (`fonts/sigmar-one/OFL.txt`)
 - Lilita One — Juan Montoreano and contributors (`fonts/lilita-one/OFL.txt`)
 - Anton — The Anton Project Authors (`fonts/anton/OFL.txt`)
 - Bungee — The Bungee Project Authors (`fonts/bungee/OFL.txt`)

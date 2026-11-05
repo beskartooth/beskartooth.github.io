@@ -27,10 +27,25 @@
 
   function trace(ctx, points) {
     ctx.beginPath();
-    if (!points.length) return;
-    ctx.moveTo(points[0].x, points[0].y);
-    for (var i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+    addLoop(ctx, points, false);
+  }
+
+  function addLoop(ctx, points, reverse) {
+    if (!points || !points.length) return;
+    if (!reverse) {
+      ctx.moveTo(points[0].x, points[0].y);
+      for (var i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+    } else {
+      ctx.moveTo(points[0].x, points[0].y);
+      for (var j = points.length - 1; j >= 1; j--) ctx.lineTo(points[j].x, points[j].y);
+    }
     ctx.closePath();
+  }
+
+  function devicePixel(ctx) {
+    var m = ctx.getTransform();
+    var scale = Math.hypot(m.a, m.b);
+    return scale > 1e-6 ? 1 / scale : 1;
   }
 
   function panelShape(panel, page) {
@@ -383,13 +398,20 @@
     ctx.clip();
     ctx.fillStyle = page.background;
     ctx.fillRect(0, 0, page.width, page.height);
+    var borderOn = page.border && page.border.enabled && page.border.width > 0;
     doc.panels.forEach(function (panel) {
       var shape = panelShape(panel, page);
+      var inner = borderOn ? G.insetPoints(shape, page.border.width) : null;
+      var clipShape = shape;
+      if (inner) {
+        var tuck = Math.min(page.border.width * 0.5, devicePixel(ctx) * 1.5);
+        clipShape = G.insetPoints(shape, Math.max(page.border.width - tuck, 0)) || inner;
+      }
       if (panel.image) {
         var img = getImage(panel.image.id);
         if (img && img.complete && img.naturalWidth) {
           ctx.save();
-          trace(ctx, shape);
+          trace(ctx, clipShape);
           ctx.clip();
           var w = img.naturalWidth * panel.image.scale;
           var h = img.naturalHeight * panel.image.scale;
@@ -401,6 +423,28 @@
           ctx.restore();
         }
       }
+      if (inner) {
+        // One filled band, overlapped a fraction of a pixel into the gutter.
+        // A stroke clipped to the artwork edge leaves a hairline of the picture there.
+        var overlap = devicePixel(ctx) * 0.75;
+        var outer = G.insetPoints(shape, -overlap) || shape;
+        ctx.save();
+        ctx.beginPath();
+        addLoop(ctx, outer, false);
+        addLoop(ctx, inner, true);
+        ctx.fillStyle = page.border.color;
+        ctx.fill("evenodd");
+        ctx.restore();
+      } else if (borderOn) {
+        ctx.save();
+        trace(ctx, shape);
+        ctx.clip();
+        ctx.lineWidth = page.border.width * 2;
+        ctx.strokeStyle = page.border.color;
+        ctx.lineJoin = "round";
+        ctx.stroke();
+        ctx.restore();
+      }
       if (opts.dropId === panel.id) {
         ctx.save();
         trace(ctx, shape);
@@ -409,20 +453,6 @@
         ctx.restore();
       }
     });
-    if (page.border && page.border.enabled && page.border.width > 0) {
-      doc.panels.forEach(function (panel) {
-        var shape = panelShape(panel, page);
-        ctx.save();
-        trace(ctx, shape);
-        ctx.clip();
-        ctx.lineWidth = page.border.width * 2;
-        ctx.strokeStyle = page.border.color;
-        ctx.lineJoin = "miter";
-        ctx.miterLimit = 2;
-        ctx.stroke();
-        ctx.restore();
-      });
-    }
     doc.letters.forEach(function (letter) {
       drawLetter(ctx, letter, opts.hideTextId === letter.id);
     });
@@ -603,13 +633,34 @@
     return ensureFonts().then(function () {
       return decodeAll(doc, imageMap);
     }).then(function (cache) {
+      var pw = Math.max(1, Math.round(doc.page.width));
+      var ph = Math.max(1, Math.round(doc.page.height));
+      var longEdge = Math.max(pw, ph);
+      var scale = longEdge >= 3840 ? 1 : Math.min(3, 3840 / longEdge);
+      var maxPixels = 48 * 1024 * 1024;
+      if (pw * scale * ph * scale > maxPixels) scale = Math.sqrt(maxPixels / (pw * ph));
+      if (!(scale > 1.05)) scale = 1;
       var canvas = document.createElement("canvas");
-      canvas.width = Math.round(doc.page.width);
-      canvas.height = Math.round(doc.page.height);
+      canvas.width = pw;
+      canvas.height = ph;
       var ctx = canvas.getContext("2d", { alpha: false });
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
-      renderPage(ctx, doc, function (id) { return cache.get(id) || null; }, { ui: false, unit: 1 });
+      var paint = function (target, drawScale) {
+        var tctx = target.getContext("2d", { alpha: false });
+        tctx.imageSmoothingEnabled = true;
+        tctx.imageSmoothingQuality = "high";
+        tctx.setTransform(drawScale, 0, 0, drawScale, 0, 0);
+        renderPage(tctx, doc, function (id) { return cache.get(id) || null; }, { ui: false, unit: 1 });
+      };
+      if (scale === 1) paint(canvas, 1);
+      else {
+        var hi = document.createElement("canvas");
+        hi.width = Math.max(1, Math.round(pw * scale));
+        hi.height = Math.max(1, Math.round(ph * scale));
+        paint(hi, hi.width / pw);
+        ctx.drawImage(hi, 0, 0, pw, ph);
+      }
       return new Promise(function (resolve, reject) {
         canvas.toBlob(function (blob) {
           if (!blob) reject(new Error("Export failed."));

@@ -27,6 +27,27 @@
   font-display: swap;
 }
 @font-face {
+  font-family: "Knewave";
+  src: url("../fonts/knewave/Knewave-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Boogaloo";
+  src: url("../fonts/boogaloo/Boogaloo-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sigmar One";
+  src: url("../fonts/sigmar-one/SigmarOne-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
   font-family: "Lilita One";
   src: url("../fonts/lilita-one/LilitaOne-Regular.ttf") format("truetype");
   font-weight: 400;
