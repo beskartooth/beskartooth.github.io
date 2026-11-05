@@ -390,10 +390,11 @@
     canvas.style.top = (slackH / 2) + "px";
     canvas.style.width = cssW + "px";
     canvas.style.height = cssH + "px";
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var dpr = window.devicePixelRatio || 1;
+    if (!(dpr > 0)) dpr = 1;
     var bw = cssW * dpr;
     var bh = cssH * dpr;
-    var maxPixels = 12 * 1024 * 1024;
+    var maxPixels = 40 * 1024 * 1024;
     if (bw * bh > maxPixels) {
       var shrink = Math.sqrt(maxPixels / (bw * bh));
       bw *= shrink;

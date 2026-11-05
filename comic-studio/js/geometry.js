@@ -876,7 +876,7 @@ function cleanupCollinear(poly, others) {
     return pts.length >= 3 ? pts : null;
   }
 
-  function offsetInset(points, dists) {
+  function offsetInset(points, dists, grow) {
     var n = points.length;
     if (n < 3) return null;
     var lines = [];
@@ -910,8 +910,21 @@ function cleanupCollinear(poly, others) {
     }
     var area = signedArea(out);
     var orig = Math.abs(signedArea(points));
-    if (area <= 1 || area > orig * 1.02) return null;
+    if (area <= 1) return null;
+    if (grow) {
+      if (area < orig * 0.5) return null;
+    } else if (area > orig * 1.02) return null;
     return out;
+  }
+
+  function insetPoints(points, dist) {
+    if (!points || points.length < 3 || !isFinite(dist)) return null;
+    var copy = points.map(function (p) { return { x: p.x, y: p.y }; });
+    if (Math.abs(dist) < 1e-4) return copy;
+    if (signedArea(copy) < 0) copy.reverse();
+    var dists = [];
+    for (var i = 0; i < copy.length; i++) dists.push(dist);
+    return offsetInset(copy, dists, dist < 0);
   }
 
   function insetPolygon(panel, page) {
@@ -945,6 +958,7 @@ function cleanupCollinear(poly, others) {
     deleteSegment: deleteSegment,
     deleteCut: deleteCut,
     nearestCut: nearestCut,
-    insetPolygon: insetPolygon
+    insetPolygon: insetPolygon,
+    insetPoints: insetPoints
   };
 });
