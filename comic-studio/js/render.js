@@ -164,8 +164,143 @@
     ctx.putImageData(image, 0, 0);
   }
 
+  function clamp01(n) { return n < 0 ? 0 : n > 1 ? 1 : n; }
+
+  function gradeSettings(page) {
+    var g = page && page.grade;
+    function n(v) {
+      var x = Number(v);
+      if (!isFinite(x)) x = 0;
+      return Math.max(-100, Math.min(100, x));
+    }
+    var look = g && (g.look === "bw" || g.look === "pencil") ? g.look : "none";
+    return {
+      exposure: n(g && g.exposure),
+      contrast: n(g && g.contrast),
+      highlights: n(g && g.highlights),
+      shadows: n(g && g.shadows),
+      saturation: n(g && g.saturation),
+      warmth: n(g && g.warmth),
+      tint: n(g && g.tint),
+      look: look
+    };
+  }
+
+  function gradeActive(g) {
+    if (!g) return false;
+    return g.look !== "none" || g.exposure || g.contrast || g.highlights || g.shadows || g.saturation || g.warmth || g.tint;
+  }
+
+  function toneRGB(r, g, b, grade) {
+    var exp = Math.pow(2, grade.exposure / 70);
+    r *= exp;
+    g *= exp;
+    b *= exp;
+    var contrast = 1 + grade.contrast / 100;
+    r = (r - 0.5) * contrast + 0.5;
+    g = (g - 0.5) * contrast + 0.5;
+    b = (b - 0.5) * contrast + 0.5;
+    var luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
+    var shadowW = (1 - clamp01(luma));
+    shadowW *= shadowW;
+    var highW = clamp01(luma);
+    highW *= highW;
+    var lift = grade.shadows / 100 * 0.45 * shadowW + grade.highlights / 100 * 0.35 * highW;
+    r += lift;
+    g += lift;
+    b += lift;
+    luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
+    var sat = 1 + grade.saturation / 100;
+    r = luma + (r - luma) * sat;
+    g = luma + (g - luma) * sat;
+    b = luma + (b - luma) * sat;
+    var warm = grade.warmth / 100 * 0.22;
+    var tint = grade.tint / 100 * 0.18;
+    r += warm;
+    b -= warm;
+    g += tint;
+    r -= tint * 0.35;
+    b -= tint * 0.35;
+    return [r, g, b];
+  }
+
+  function applyLook(r, g, b, grade, edge) {
+    r = clamp01(r);
+    g = clamp01(g);
+    b = clamp01(b);
+    if (grade.look !== "bw" && grade.look !== "pencil") return [r, g, b];
+    var luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
+    if (grade.look === "bw") return [luma, luma, luma];
+    var line = Math.min(1, (edge || 0) * 6 + (1 - luma) * 0.12);
+    var v = 0.96 * (1 - Math.min(1, line));
+    return [v * 0.98, v * 0.95, v * 0.9];
+  }
+
+  function gradeCss(hex, grade) {
+    if (!gradeActive(grade) || !/^#[0-9a-fA-F]{6}$/.test(hex)) return hex;
+    var r = parseInt(hex.slice(1, 3), 16) / 255;
+    var g = parseInt(hex.slice(3, 5), 16) / 255;
+    var b = parseInt(hex.slice(5, 7), 16) / 255;
+    var t = toneRGB(r, g, b, grade);
+    var o = applyLook(t[0], t[1], t[2], grade, 0);
+    function h(n) {
+      var v = Math.round(clamp01(n) * 255);
+      return (v < 16 ? "0" : "") + v.toString(16);
+    }
+    return "#" + h(o[0]) + h(o[1]) + h(o[2]);
+  }
+
+  function gradeBitmap(canvas, grade) {
+    if (!gradeActive(grade)) return;
+    var w = canvas.width;
+    var h = canvas.height;
+    var ctx = canvas.getContext("2d", { willReadFrequently: true });
+    var image = ctx.getImageData(0, 0, w, h);
+    var d = image.data;
+    var lum = new Float32Array(w * h);
+    var pencil = grade.look === "pencil";
+    var y;
+    var x;
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        var i = (y * w + x) * 4;
+        if (d[i + 3] < 8) continue;
+        var t = toneRGB(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255, grade);
+        lum[y * w + x] = t[0] * 0.2126 + t[1] * 0.7152 + t[2] * 0.0722;
+        d[i] = t[0] * 255;
+        d[i + 1] = t[1] * 255;
+        d[i + 2] = t[2] * 255;
+      }
+    }
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        var p = y * w + x;
+        var j = p * 4;
+        if (d[j + 3] < 8) continue;
+        var edge = 0;
+        if (pencil) {
+          if (x > 0) edge += Math.abs(lum[p] - lum[p - 1]);
+          if (y > 0) edge += Math.abs(lum[p] - lum[p - w]);
+        }
+        var o = applyLook(d[j] / 255, d[j + 1] / 255, d[j + 2] / 255, grade, edge);
+        if (pencil) {
+          var n = (x * 374761393 + y * 668265263) | 0;
+          n = Math.imul(n ^ (n >>> 13), 1274126177);
+          var grain = ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+          o[0] = clamp01(o[0] * (0.97 + grain * 0.045));
+          o[1] = clamp01(o[1] * (0.97 + grain * 0.045));
+          o[2] = clamp01(o[2] * (0.97 + grain * 0.045));
+        }
+        d[j] = o[0] * 255;
+        d[j + 1] = o[1] * 255;
+        d[j + 2] = o[2] * 255;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+  }
+
   var dotCache = new Map();
-  function screenedImage(ctx, img, placed, clipShape, settings) {
+  function screenedImage(ctx, img, placed, clipShape, settings, grade) {
     var scale = 1 / devicePixel(ctx);
     var b = G.bounds(clipShape);
     var pad = 2;
@@ -182,7 +317,9 @@
       Math.round(placed.cx * 10), Math.round(placed.cy * 10),
       Math.round(placed.scale * 1000), Math.round((placed.rotation || 0) * 10),
       placed.flipX ? 1 : 0, placed.flipY ? 1 : 0,
-      settings.size, Math.round(settings.strength * 100), Math.round(scale * 100),
+      settings ? settings.size : 0, settings ? Math.round(settings.strength * 100) : 0,
+      grade ? [grade.exposure, grade.contrast, grade.highlights, grade.shadows, grade.saturation, grade.warmth, grade.tint, grade.look].join(",") : "",
+      Math.round(scale * 100),
       cw, ch, pts
     ].join("|");
     var off = dotCache.get(key);
@@ -196,7 +333,8 @@
       addLoop(octx, clipShape, false);
       octx.clip();
       paintPlacedImage(octx, img, placed);
-      screenBitmap(off, x0, y0, Math.max(1.5, settings.size * scale), settings.strength);
+      if (grade && gradeActive(grade)) gradeBitmap(off, grade);
+      if (settings) screenBitmap(off, x0, y0, Math.max(1.5, settings.size * scale), settings.strength);
       dotCache.set(key, off);
       if (dotCache.size > 8) dotCache.delete(dotCache.keys().next().value);
     }
@@ -275,22 +413,80 @@
     }
   }
 
-  function paintGlyph(ctx, letter, text, x, y, rot, scale) {
+  function fillScreenedText(ctx, letter, text, page) {
+    var dots = dotSettings(page);
+    if (!dots) {
+      ctx.fillStyle = letter.fill;
+      ctx.fillText(text, 0, 0);
+      return;
+    }
+    var metrics = ctx.measureText(text);
+    var scale = 1 / devicePixel(ctx);
+    var pad = letter.fontSize * 0.85;
+    var pw = Math.max(1, metrics.width + pad * 2);
+    var ph = letter.fontSize * 2.5;
+    var bw = Math.max(1, Math.ceil(pw * scale));
+    var bh = Math.max(1, Math.ceil(ph * scale));
+    if (bw * bh > 1500000) {
+      ctx.fillStyle = letter.fill;
+      ctx.fillText(text, 0, 0);
+      return;
+    }
+    var c = document.createElement("canvas");
+    c.width = bw;
+    c.height = bh;
+    var o = c.getContext("2d", { willReadFrequently: true });
+    o.setTransform(scale, 0, 0, scale, bw / 2, bh / 2);
+    o.font = ctx.font;
+    o.textAlign = "center";
+    o.textBaseline = "middle";
+    o.fillStyle = letter.fill || "#111111";
+    o.fillText(text, 0, 0);
+    screenBitmap(c, 0, 0, Math.max(1.5, dots.size * scale), dots.strength);
+    ctx.drawImage(c, -pw / 2, -ph / 2, pw, ph);
+  }
+
+  function paintGlyph(ctx, letter, text, x, y, rot, scale, page) {
     ctx.save();
     ctx.translate(x, y);
     if (rot) ctx.rotate(rot);
     if (scale && scale !== 1) ctx.scale(scale, scale);
+    ctx.lineJoin = "round";
+    ctx.miterLimit = 2;
+    var hi = Math.max(0, Number(letter.highlightWidth) || 0);
+    if (hi > 0 && /^#[0-9a-fA-F]{6}$/.test(letter.highlight || "")) {
+      ctx.lineWidth = hi;
+      ctx.strokeStyle = letter.highlight;
+      ctx.strokeText(text, 0, 0);
+    }
+    var sketch = Math.max(0, Math.min(100, Number(letter.sketch) || 0));
+    if (sketch > 0) {
+      var amp = Math.max(0.35, letter.fontSize * sketch / 100 * 0.055);
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = Math.max(1, letter.fontSize * (0.03 + sketch / 900));
+      ctx.strokeStyle = "#3a342c";
+      for (var s = 0; s < 4; s++) {
+        var ox = ((s % 2) ? 1 : -1) * amp * (0.55 + (s % 3) * 0.22);
+        var oy = (s < 2 ? -1 : 1) * amp * 0.4;
+        ctx.strokeText(text, ox, oy);
+      }
+      ctx.restore();
+    }
     if (letter.strokeWidth > 0) {
       ctx.lineWidth = letter.strokeWidth;
       ctx.strokeStyle = letter.stroke;
       ctx.strokeText(text, 0, 0);
     }
-    ctx.fillStyle = letter.fill;
-    ctx.fillText(text, 0, 0);
+    if (letter.halftone && page) fillScreenedText(ctx, letter, text, page);
+    else {
+      ctx.fillStyle = letter.fill;
+      ctx.fillText(text, 0, 0);
+    }
     ctx.restore();
   }
 
-  function drawWarpedLine(ctx, letter, text, yBase) {
+  function drawWarpedLine(ctx, letter, text, yBase, page) {
     var widths = [];
     var total = 0;
     for (var i = 0; i < text.length; i++) {
@@ -325,12 +521,12 @@
         scale = Math.max(0.35, 1 + (1 - t) * amount * 0.85);
       }
       if (persp) scale *= Math.max(0.3, 1 + persp * (gy / Math.max(letter.h / 2, 1)));
-      paintGlyph(ctx, letter, text.charAt(c), gx, gy, rot, scale);
+      paintGlyph(ctx, letter, text.charAt(c), gx, gy, rot, scale, page);
       cursor += widths[c];
     }
   }
 
-  function drawText(ctx, letter, maxWidth) {
+  function drawText(ctx, letter, maxWidth, page) {
     ctx.save();
     ctx.font = fontString(letter);
     ctx.textAlign = "center";
@@ -346,16 +542,8 @@
     var warped = (letter.warp === "arc" || letter.warp === "wave" || letter.warp === "bulge") && Number(letter.warpAmount);
     var persp = Number(letter.perspective);
     for (var i = 0; i < lines.length; i++) {
-      if (warped || persp) drawWarpedLine(ctx, letter, lines[i], y);
-      else {
-        if (letter.strokeWidth > 0) {
-          ctx.lineWidth = letter.strokeWidth;
-          ctx.strokeStyle = letter.stroke;
-          ctx.strokeText(lines[i], 0, y);
-        }
-        ctx.fillStyle = letter.fill;
-        ctx.fillText(lines[i], 0, y);
-      }
+      if (warped || persp) drawWarpedLine(ctx, letter, lines[i], y, page);
+      else paintGlyph(ctx, letter, lines[i], 0, y, 0, 1, page);
       y += lh;
     }
     ctx.restore();
@@ -385,7 +573,7 @@
     }
   }
 
-  function drawLetter(ctx, letter, hideText) {
+  function drawLetter(ctx, letter, hideText, page) {
     var cx = letter.x + letter.w / 2;
     var cy = letter.y + letter.h / 2;
     ctx.save();
@@ -419,10 +607,10 @@
           ctx.ellipse(0, 0, Math.max(1, letter.w * 0.36), Math.max(1, letter.h * 0.32), 0, 0, Math.PI * 2);
         }
         ctx.clip();
-        drawText(ctx, letter, maxW);
+        drawText(ctx, letter, maxW, page);
         ctx.restore();
       } else {
-        drawText(ctx, letter, maxW);
+        drawText(ctx, letter, maxW, page);
       }
     }
     ctx.restore();
@@ -554,7 +742,8 @@
     ctx.beginPath();
     ctx.rect(0, 0, page.width, page.height);
     ctx.clip();
-    ctx.fillStyle = page.background;
+    var grade = gradeSettings(page);
+    ctx.fillStyle = gradeCss(page.background, grade);
     ctx.fillRect(0, 0, page.width, page.height);
     var borderOn = page.border && page.border.enabled && page.border.width > 0;
     doc.panels.forEach(function (panel) {
@@ -569,8 +758,8 @@
         var img = getImage(panel.image.id);
         if (img && img.complete && img.naturalWidth) {
           var dots = dotSettings(page);
-          if (dots) {
-            screenedImage(ctx, img, panel.image, clipShape, dots);
+          if (dots || gradeActive(grade)) {
+            screenedImage(ctx, img, panel.image, clipShape, dots, grade);
           } else {
             ctx.save();
             trace(ctx, clipShape);
@@ -589,7 +778,7 @@
         ctx.beginPath();
         addLoop(ctx, outer, false);
         addLoop(ctx, inner, true);
-        ctx.fillStyle = page.border.color;
+        ctx.fillStyle = gradeCss(page.border.color, grade);
         ctx.fill("evenodd");
         ctx.restore();
       } else if (borderOn) {
@@ -597,7 +786,7 @@
         trace(ctx, shape);
         ctx.clip();
         ctx.lineWidth = page.border.width * 2;
-        ctx.strokeStyle = page.border.color;
+        ctx.strokeStyle = gradeCss(page.border.color, grade);
         ctx.lineJoin = "round";
         ctx.stroke();
         ctx.restore();
@@ -611,12 +800,12 @@
       }
     });
     doc.letters.forEach(function (letter) {
-      drawLetter(ctx, letter, opts.hideTextId === letter.id);
+      drawLetter(ctx, letter, opts.hideTextId === letter.id, page);
     });
     if (opts.previewLetter) {
       ctx.save();
       ctx.globalAlpha = 0.9;
-      drawLetter(ctx, opts.previewLetter, false);
+      drawLetter(ctx, opts.previewLetter, false, page);
       ctx.restore();
     }
     if (!opts.ui) { ctx.restore(); return; }

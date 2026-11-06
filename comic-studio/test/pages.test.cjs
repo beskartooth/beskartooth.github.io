@@ -96,4 +96,41 @@ old.setPageSize(old.doc.page.width * 2, old.doc.page.height * 2);
 assert.strictEqual(old.doc.page.dots.enabled, true);
 assert.ok(old.doc.page.dots.size > 8 && old.doc.page.dots.size <= 22);
 
+assert.strictEqual(session.doc.page.grade.look, "none");
+assert.strictEqual(session.doc.page.grade.contrast, 0);
+session.patchPage({ grade: { contrast: 40, look: "pencil", warmth: 15 } });
+var graded = JSON.parse(JSON.stringify(session.toJSON()));
+var gpage = graded.pages[session.pageIndex()].page.grade;
+assert.strictEqual(gpage.contrast, 40);
+assert.strictEqual(gpage.look, "pencil");
+assert.strictEqual(gpage.warmth, 15);
+assert.strictEqual(gpage.exposure, 0);
+var bare = JSON.parse(JSON.stringify(session.toJSON()));
+bare.pages.forEach(function (p) { delete p.page.grade; });
+var migrated = Doc.createSession();
+migrated.loadJSON(bare);
+assert.strictEqual(migrated.doc.page.grade.look, "none");
+assert.strictEqual(migrated.doc.page.grade.contrast, 0);
+var before = migrated.doc.page.grade.contrast;
+migrated.setPageSize(migrated.doc.page.width * 2, migrated.doc.page.height * 2);
+assert.strictEqual(migrated.doc.page.grade.contrast, before);
+var letter = migrated.addLetter("sfx", { x: 10, y: 10, w: 200, h: 80 });
+assert.strictEqual(letter.sketch, 0);
+assert.strictEqual(letter.halftone, false);
+assert.strictEqual(letter.highlightWidth, 0);
+migrated.updateLetter(letter.id, { sketch: 60, highlight: "#ffee88", highlightWidth: 18, halftone: true, fill: "#112233" });
+var savedLetter = JSON.parse(JSON.stringify(migrated.toJSON()));
+var again = Doc.createSession();
+again.loadJSON(savedLetter);
+var back = null;
+for (var pi = 0; pi < again.pageCount(); pi++) {
+  again.pageAt(pi).letters.forEach(function (l) { if (l.fill === "#112233") back = l; });
+}
+assert.ok(back, "saved letter missing");
+assert.strictEqual(back.sketch, 60);
+assert.strictEqual(back.highlight, "#ffee88");
+assert.strictEqual(back.highlightWidth, 18);
+assert.strictEqual(back.halftone, true);
+assert.strictEqual(back.fill, "#112233");
+
 console.log("pages tests passed");

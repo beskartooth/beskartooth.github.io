@@ -188,6 +188,38 @@
     };
   }
 
+  function gradeNum(v) {
+    var n = Number(v);
+    if (!isFinite(n)) n = 0;
+    return clamp(Math.round(n), -100, 100);
+  }
+
+  function normalizeGrade(src) {
+    var look = src && (src.look === "bw" || src.look === "pencil") ? src.look : "none";
+    return {
+      exposure: gradeNum(src && src.exposure),
+      contrast: gradeNum(src && src.contrast),
+      highlights: gradeNum(src && src.highlights),
+      shadows: gradeNum(src && src.shadows),
+      saturation: gradeNum(src && src.saturation),
+      warmth: gradeNum(src && src.warmth),
+      tint: gradeNum(src && src.tint),
+      look: look
+    };
+  }
+
+  function applyLetterLook(letter, src) {
+    var from = src || {};
+    letter.highlight = isHex(from.highlight) ? from.highlight : (isHex(letter.highlight) ? letter.highlight : "#fff3a0");
+    var width = from.highlightWidth != null ? Number(from.highlightWidth) : Number(letter.highlightWidth);
+    var sketch = from.sketch != null ? Number(from.sketch) : Number(letter.sketch);
+    letter.highlightWidth = clamp(isFinite(width) ? width : 0, 0, 80);
+    letter.sketch = clamp(isFinite(sketch) ? sketch : 0, 0, 100);
+    if (from.halftone != null) letter.halftone = from.halftone === true;
+    else letter.halftone = letter.halftone === true;
+    return letter;
+  }
+
   function createSession() {
     var state = {
       doc: null,
@@ -223,7 +255,8 @@
             color: border && isHex(border.color) ? border.color : "#111111",
             width: border && border.width != null ? border.width : 4
           },
-          dots: normalizeDots(settings && settings.dots)
+          dots: normalizeDots(settings && settings.dots),
+          grade: normalizeGrade(settings && settings.grade)
         },
         panels: [{
           id: uid("p"),
@@ -415,6 +448,7 @@
         letter.tail = null;
       }
       if (src.text != null) letter.text = String(src.text).slice(0, 2000);
+      applyLetterLook(letter, src);
       return letter;
     }
 
@@ -444,9 +478,10 @@
       if (style.skewX != null && isFinite(Number(style.skewX))) letter.skewX = clamp(Number(style.skewX), -400, 400);
       if (style.skewY != null && isFinite(Number(style.skewY))) letter.skewY = clamp(Number(style.skewY), -400, 400);
       if (style.perspective != null && isFinite(Number(style.perspective))) letter.perspective = clamp(Number(style.perspective), -1, 1);
-      ["fill", "stroke", "shapeFill", "shapeStroke"].forEach(function (k) {
+      ["fill", "stroke", "shapeFill", "shapeStroke", "highlight"].forEach(function (k) {
         if (isHex(style[k])) letter[k] = style[k];
       });
+      applyLetterLook(letter, style);
       if (letter.type === "caption" || letter.type === "sfx") letter.tail = null;
       else if (style.tail && typeof style.tail === "object") {
         letter.tail = { dx: Number(style.tail.dx) || 0, dy: Number(style.tail.dy) || 0 };
@@ -615,6 +650,20 @@
             strength: partial.dots.strength != null ? partial.dots.strength : prev.strength
           };
           state.doc.page.dots = normalizeDots(next);
+        }
+        if (partial.grade) {
+          var gprev = state.doc.page.grade || normalizeGrade(null);
+          var gnext = {
+            exposure: partial.grade.exposure != null ? partial.grade.exposure : gprev.exposure,
+            contrast: partial.grade.contrast != null ? partial.grade.contrast : gprev.contrast,
+            highlights: partial.grade.highlights != null ? partial.grade.highlights : gprev.highlights,
+            shadows: partial.grade.shadows != null ? partial.grade.shadows : gprev.shadows,
+            saturation: partial.grade.saturation != null ? partial.grade.saturation : gprev.saturation,
+            warmth: partial.grade.warmth != null ? partial.grade.warmth : gprev.warmth,
+            tint: partial.grade.tint != null ? partial.grade.tint : gprev.tint,
+            look: partial.grade.look != null ? partial.grade.look : gprev.look
+          };
+          state.doc.page.grade = normalizeGrade(gnext);
         }
       },
       setPageSize: function (w, h) {
@@ -888,6 +937,7 @@
           letter.tail.dx *= letter.w / preset.w;
           letter.tail.dy *= letter.h / preset.h;
         }
+        applyLetterLook(letter, null);
         checkpoint();
         state.doc.letters.push(letter);
         return letter;
@@ -904,6 +954,14 @@
         ["text", "font", "fontStyle", "fill", "stroke", "shapeFill", "shapeStroke"].forEach(function (k) {
           if (partial[k] != null) letter[k] = partial[k];
         });
+        if (isHex(partial.highlight)) letter.highlight = partial.highlight;
+        if (partial.highlightWidth != null && isFinite(Number(partial.highlightWidth))) {
+          letter.highlightWidth = clamp(Number(partial.highlightWidth), 0, 80);
+        }
+        if (partial.sketch != null && isFinite(Number(partial.sketch))) {
+          letter.sketch = clamp(Number(partial.sketch), 0, 100);
+        }
+        if (partial.halftone != null) letter.halftone = !!partial.halftone;
         if (partial.tail && letter.tail) {
           if (partial.tail.dx != null) letter.tail.dx = partial.tail.dx;
           if (partial.tail.dy != null) letter.tail.dy = partial.tail.dy;
@@ -936,6 +994,7 @@
         letter.x = Math.round((page.width - letter.w) / 2);
         letter.y = Math.round((page.height - letter.h) / 2);
         letter.text = preset.text;
+        applyLetterLook(letter, null);
         paintLetterStyle(letter, style || {});
         letter.text = preset.text;
         checkpoint();
@@ -1092,6 +1151,7 @@
           if (src.skewX != null) letter.skewX = clamp(Number(src.skewX) || 0, -400, 400);
           if (src.skewY != null) letter.skewY = clamp(Number(src.skewY) || 0, -400, 400);
           if (src.perspective != null) letter.perspective = clamp(Number(src.perspective) || 0, -1, 1);
+          applyLetterLook(letter, src);
           letters.push(letter);
         });
         var doc = {
@@ -1105,7 +1165,8 @@
               color: page.border && isHex(page.border.color) ? page.border.color : "#111111",
               width: clamp(page.border ? Number(page.border.width) : 4, 0, 48)
             },
-            dots: normalizeDots(page.dots)
+            dots: normalizeDots(page.dots),
+            grade: normalizeGrade(page.grade)
           },
           panels: panels,
           letters: letters,
