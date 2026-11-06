@@ -19,6 +19,8 @@ h1::after{content:"";display:block;width:54px;height:5px;border-radius:5px;backg
 .link:active{transform:translateY(0) scale(.99)}
 .link:focus-visible{outline:3px solid var(--gold);outline-offset:3px;border-color:var(--purple)}
 .link.featured{background:linear-gradient(135deg,rgba(138,92,246,.32),rgba(111,63,232,.18) 60%,rgba(232,189,84,.1));border-color:rgba(138,92,246,.7)}
+.link.support{background:linear-gradient(135deg,rgba(232,189,84,.34),rgba(232,189,84,.1));border-color:rgba(232,189,84,.8)}
+.support .ico{background:var(--gold);border-color:transparent}
 .ico{flex:none;width:2.8rem;height:2.8rem;border-radius:16px;display:grid;place-items:center;font-size:1.45rem;background:var(--bg2);border:1px solid var(--line)}
 .ico.x{color:var(--text)}
 .featured .ico{background:var(--purple);border-color:transparent}
