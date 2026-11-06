@@ -433,6 +433,13 @@ label .deg input { width: 5.5rem; }
 }
 .share-x:hover { border-color: #4a5366; }
 .share-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.support-link {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: transparent;
+  font-weight: 700;
+}
+.support-link:hover { border-color: transparent; filter: brightness(1.06); }
 #meta { color: var(--muted); white-space: nowrap; }
 
 #editor {
