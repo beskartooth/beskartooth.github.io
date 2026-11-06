@@ -16,6 +16,7 @@ Comic Studio is 100% client-side.
 - PNG and JPG export downloads a picture of the page. The file stays on your device.
 - There are no accounts, no remote fonts, and no third-party scripts. The fonts in `fonts/` are files in this folder.
 - Share on X opens X’s post composer with a link to this page and `#MadeWithComicStudio`. The comic and the project stay on your device.
+- Support opens [Besky’s Ko-fi page](https://ko-fi.com/beskyart) in a new tab. Comic Studio does not collect payment.
 
 The page sets a Content Security Policy that blocks network requests.
 
