@@ -513,6 +513,14 @@
     if (document.activeElement !== $("dots-strength")) $("dots-strength").value = String(Math.round(dots.strength));
     $("dots-size-val").textContent = Math.round(dots.size) + " px";
     $("dots-strength-val").textContent = Math.round(dots.strength) + "%";
+    var grade = page.grade || { exposure: 0, contrast: 0, highlights: 0, shadows: 0, saturation: 0, warmth: 0, tint: 0, look: "none" };
+    ["exposure", "contrast", "highlights", "shadows", "saturation", "warmth", "tint"].forEach(function (key) {
+      var input = $("grade-" + key);
+      var val = $("grade-" + key + "-val");
+      if (input && document.activeElement !== input) input.value = String(Math.round(grade[key] || 0));
+      if (val) val.textContent = String(Math.round(grade[key] || 0));
+    });
+    if ($("grade-look") && document.activeElement !== $("grade-look")) $("grade-look").value = grade.look || "none";
     metaEl.textContent = "Page " + (session.pageIndex() + 1) + " of " + session.pageCount()
       + " · " + Math.round(page.width) + "×" + Math.round(page.height)
       + " · " + session.doc.panels.length + " panels";
@@ -814,6 +822,43 @@
     sw.value = String(Math.round(letter.strokeWidth));
     selProps.appendChild(field("Outline width", sw));
     bindGesture(sw, function () { session.updateLetter(letter.id, { strokeWidth: Number(sw.value) }); });
+
+    var highlight = document.createElement("input");
+    highlight.type = "color";
+    highlight.value = /^#[0-9a-fA-F]{6}$/.test(letter.highlight || "") ? letter.highlight : "#fff3a0";
+    selProps.appendChild(field("Highlight", highlight));
+    bindGesture(highlight, function () { session.updateLetter(letter.id, { highlight: highlight.value }); });
+
+    var hw = document.createElement("input");
+    hw.type = "range";
+    hw.min = "0";
+    hw.max = "64";
+    hw.value = String(Math.round(letter.highlightWidth || 0));
+    selProps.appendChild(field("Highlight width", hw));
+    bindGesture(hw, function () { session.updateLetter(letter.id, { highlightWidth: Number(hw.value) }); });
+
+    var sketch = document.createElement("input");
+    sketch.type = "range";
+    sketch.min = "0";
+    sketch.max = "100";
+    sketch.value = String(Math.round(letter.sketch || 0));
+    selProps.appendChild(field("Sketch", sketch));
+    bindGesture(sketch, function () { session.updateLetter(letter.id, { sketch: Number(sketch.value) }); });
+
+    var halfText = document.createElement("input");
+    halfText.type = "checkbox";
+    halfText.checked = !!letter.halftone;
+    var halfLabel = document.createElement("label");
+    halfLabel.className = "check";
+    halfLabel.appendChild(halfText);
+    halfLabel.appendChild(document.createTextNode(" Halftone letters"));
+    selProps.appendChild(halfLabel);
+    halfText.addEventListener("change", function () {
+      session.begin();
+      session.updateLetter(letter.id, { halftone: halfText.checked });
+      session.end();
+      render();
+    });
 
     if (letter.type !== "sfx") {
       var shapeFill = document.createElement("input");
@@ -2054,6 +2099,29 @@
     session.patchPage({ dots: { strength: Number($("dots-strength").value) } });
     $("dots-strength-val").textContent = Math.round(session.doc.page.dots.strength) + "%";
   });
+  ["exposure", "contrast", "highlights", "shadows", "saturation", "warmth", "tint"].forEach(function (key) {
+    bindGesture($("grade-" + key), function () {
+      var patch = {};
+      patch[key] = Number($("grade-" + key).value);
+      session.patchPage({ grade: patch });
+      $("grade-" + key + "-val").textContent = String(Math.round(session.doc.page.grade[key]));
+    });
+  });
+  $("grade-look").addEventListener("change", function () {
+    session.begin();
+    session.patchPage({ grade: { look: $("grade-look").value } });
+    session.end();
+    render();
+  });
+  $("grade-reset").addEventListener("click", function () {
+    session.begin();
+    session.patchPage({ grade: {
+      exposure: 0, contrast: 0, highlights: 0, shadows: 0, saturation: 0, warmth: 0, tint: 0, look: "none"
+    } });
+    session.end();
+    syncPageFields();
+    render();
+  });
 
   $("undo").addEventListener("click", doUndo);
   $("redo").addEventListener("click", doRedo);
@@ -2303,7 +2371,8 @@
     "Arc, wave, or bulge lettering from the side panel. Alt-drag a corner to skew the words.",
     "Add a page from the strip under the canvas. Each page keeps its own panels and lettering.",
     "The image bank and saved styles are shared by every page. Copy and paste works across pages.",
-    "Halftone dots in the side panel turns pictures into a printed color screen. Lettering stays solid."
+    "Halftone dots in the side panel turns pictures into a printed color screen. Lettering stays solid.",
+    "Adjust changes exposure, color, black and white, or pencil without rewriting the pictures. Sketch and Highlight style the words."
   ];
   var TOUR = [
     {
@@ -2386,6 +2455,10 @@
       shapeFill: styleHex(raw.shapeFill, "#ffffff"),
       shapeStroke: styleHex(raw.shapeStroke, "#161616"),
       shapeStrokeWidth: Math.max(0, Math.min(48, Number(raw.shapeStrokeWidth) || 0)),
+      highlight: styleHex(raw.highlight, "#fff3a0"),
+      highlightWidth: Math.max(0, Math.min(80, Number(raw.highlightWidth) || 0)),
+      sketch: Math.max(0, Math.min(100, Number(raw.sketch) || 0)),
+      halftone: raw.halftone === true,
       rotation: Number(raw.rotation) || 0,
       warp: raw.warp === "arc" || raw.warp === "wave" || raw.warp === "bulge" ? raw.warp : "",
       warpAmount: Math.max(-100, Math.min(100, Number(raw.warpAmount) || 0)),
@@ -2436,6 +2509,10 @@
       shapeFill: letter.shapeFill,
       shapeStroke: letter.shapeStroke,
       shapeStrokeWidth: letter.shapeStrokeWidth,
+      highlight: letter.highlight,
+      highlightWidth: letter.highlightWidth || 0,
+      sketch: letter.sketch || 0,
+      halftone: !!letter.halftone,
       rotation: letter.rotation || 0,
       warp: letter.warp || "",
       warpAmount: letter.warpAmount || 0,

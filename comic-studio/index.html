@@ -106,6 +106,37 @@
           <input id="border-width" type="range" min="0" max="40" step="1">
         </label>
       </div>
+      <h2>Adjust</h2>
+      <label>Look
+        <select id="grade-look">
+          <option value="none">None</option>
+          <option value="bw">Black and white</option>
+          <option value="pencil">Pencil</option>
+        </select>
+      </label>
+      <label>Exposure <span id="grade-exposure-val"></span>
+        <input id="grade-exposure" type="range" min="-100" max="100" step="1" value="0">
+      </label>
+      <label>Contrast <span id="grade-contrast-val"></span>
+        <input id="grade-contrast" type="range" min="-100" max="100" step="1" value="0">
+      </label>
+      <label>Highlights <span id="grade-highlights-val"></span>
+        <input id="grade-highlights" type="range" min="-100" max="100" step="1" value="0">
+      </label>
+      <label>Shadows <span id="grade-shadows-val"></span>
+        <input id="grade-shadows" type="range" min="-100" max="100" step="1" value="0">
+      </label>
+      <label>Saturation <span id="grade-saturation-val"></span>
+        <input id="grade-saturation" type="range" min="-100" max="100" step="1" value="0">
+      </label>
+      <label>Warmth <span id="grade-warmth-val"></span>
+        <input id="grade-warmth" type="range" min="-100" max="100" step="1" value="0">
+      </label>
+      <label>Tint <span id="grade-tint-val"></span>
+        <input id="grade-tint" type="range" min="-100" max="100" step="1" value="0">
+      </label>
+      <button type="button" id="grade-reset">Reset adjustments</button>
+      <p class="hint">These change the page art without rewriting your pictures. Halftone, below, screens the adjusted picture. Lettering is styled on its own.</p>
       <h2>Print</h2>
       <label class="check"><input id="dots-on" type="checkbox"> Halftone dots</label>
       <label>Dot size <span id="dots-size-val"></span>
@@ -114,7 +145,7 @@
       <label>Strength <span id="dots-strength-val"></span>
         <input id="dots-strength" type="range" min="0" max="100" step="1" value="85">
       </label>
-      <p class="hint">Color Ben-Day screen on the pictures. Dot size follows the tone. Gutters, borders, and lettering stay solid.</p>
+      <p class="hint">Color Ben-Day screen on the adjusted pictures. Dot size follows the tone. Lettering stays solid unless you turn on Halftone letters.</p>
       <h2>Selection</h2>
       <div id="sel-props"></div>
     </aside>
