@@ -695,6 +695,45 @@
       }
       bindGesture(rot, function () { applyRotation(rot.value); });
       bindGesture(rotNum, function () { applyRotation(rotNum.value); });
+
+      var picHead = document.createElement("p");
+      picHead.className = "hint";
+      picHead.textContent = "Picture tone. Page Adjust is applied after this.";
+      selProps.appendChild(picHead);
+      var picGrade = panel.image.grade || { exposure: 0, contrast: 0, highlights: 0, shadows: 0, saturation: 0, warmth: 0, tint: 0 };
+      [["exposure", "Exposure"], ["contrast", "Contrast"], ["highlights", "Highlights"], ["shadows", "Shadows"], ["saturation", "Saturation"], ["warmth", "Warmth"], ["tint", "Tint"]].forEach(function (pair) {
+        var key = pair[0];
+        var slider = document.createElement("input");
+        slider.type = "range";
+        slider.min = "-100";
+        slider.max = "100";
+        slider.step = "1";
+        slider.value = String(Math.round(picGrade[key] || 0));
+        var num = document.createElement("span");
+        num.textContent = slider.value;
+        var row = field(pair[1] + " ", slider);
+        row.appendChild(num);
+        selProps.appendChild(row);
+        bindGesture(slider, function () {
+          var current = panelById(selection.id);
+          if (!current || !current.image) return;
+          var patch = {};
+          patch[key] = Number(slider.value);
+          session.setImageGrade(current.id, patch);
+          num.textContent = String(Math.round(current.image.grade[key]));
+        });
+      });
+      var resetPic = button("Reset picture tone", "", function () {
+        session.begin();
+        session.setImageGrade(selection.id, {
+          exposure: 0, contrast: 0, highlights: 0, shadows: 0, saturation: 0, warmth: 0, tint: 0
+        });
+        session.end();
+        propsKey = "";
+        syncProps();
+        render();
+      });
+      selProps.appendChild(resetPic);
     }
     var actions = document.createElement("div");
     actions.className = "prop-actions";
@@ -1191,7 +1230,9 @@
         drag.refs = [];
         session.doc.panels.forEach(function (panel, pi) {
           panel.points.forEach(function (p, i) {
-            if (Math.hypot(p.x - drag.current.x, p.y - drag.current.y) <= 1.2) drag.refs.push({ pi: pi, i: i });
+            if (Math.hypot(p.x - drag.current.x, p.y - drag.current.y) <= 1.2) {
+              drag.refs.push({ pi: pi, i: i, lock: G.pageEdgeLock(p, session.doc.page.width, session.doc.page.height) });
+            }
           });
         });
       }
@@ -1212,13 +1253,21 @@
       canvas.style.cursor = "crosshair";
       updateLiveValues();
     } else if (drag.kind === "cut-vertex") {
-      (drag.refs || []).forEach(function (ref) {
-        var panel = session.doc.panels[ref.pi];
-        if (!panel || !panel.points[ref.i]) return;
-        panel.points[ref.i].x = pt.x;
-        panel.points[ref.i].y = pt.y;
-      });
-      drag.current = { x: pt.x, y: pt.y };
+      var page = session.doc.page;
+      var lock = (drag.refs && drag.refs[0] && drag.refs[0].lock) || { x: null, y: null };
+      if (!(lock.x != null && lock.y != null)) {
+        var nx = lock.x != null ? lock.x : clamp(pt.x, 0, page.width);
+        var ny = lock.y != null ? lock.y : clamp(pt.y, 0, page.height);
+        (drag.refs || []).forEach(function (ref) {
+          var panel = session.doc.panels[ref.pi];
+          if (!panel || !panel.points[ref.i]) return;
+          var refLock = ref.lock || { x: null, y: null };
+          if (refLock.x != null && refLock.y != null) return;
+          panel.points[ref.i].x = refLock.x != null ? refLock.x : nx;
+          panel.points[ref.i].y = refLock.y != null ? refLock.y : ny;
+        });
+        drag.current = { x: nx, y: ny };
+      }
       canvas.style.cursor = "move";
     } else if (drag.kind === "panel" && drag.img) {
       var panel = panelById(drag.id);
@@ -1808,6 +1857,7 @@
       rotation: img.rotation || 0,
       flipX: img.flipX === true,
       flipY: img.flipY === true,
+      grade: img.grade || null,
       relX: img.cx - anchor.x,
       relY: img.cy - anchor.y
     };

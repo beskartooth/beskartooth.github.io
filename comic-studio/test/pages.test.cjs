@@ -133,4 +133,20 @@ assert.strictEqual(back.highlightWidth, 18);
 assert.strictEqual(back.halftone, true);
 assert.strictEqual(back.fill, "#112233");
 
+var pic = Doc.createSession();
+assert.strictEqual(pic.setImage(pic.doc.panels[0].id, { dataUrl: "data:image/png;base64,aaaa", width: 8, height: 8, name: "pic" }), true);
+pic.setImageGrade(pic.doc.panels[0].id, { exposure: 25, contrast: -10, warmth: 5 });
+var packed = pic.toJSON();
+assert.strictEqual(packed.pages[0].panels[0].image.grade.exposure, 25);
+assert.strictEqual(packed.pages[0].panels[0].image.grade.contrast, -10);
+assert.strictEqual(packed.pages[0].panels[0].image.grade.look, "none");
+var copied = pic.pastePanelImage(pic.doc.panels[0].id, packed.pages[0].panels[0].image, 12, 0);
+assert.strictEqual(copied, true);
+assert.strictEqual(pic.doc.panels[0].image.grade.warmth, 5);
+delete packed.pages[0].panels[0].image.grade;
+var oldPic = Doc.createSession();
+oldPic.loadJSON(packed);
+assert.strictEqual(oldPic.doc.panels[0].image.grade.exposure, 0);
+assert.strictEqual(oldPic.doc.panels[0].image.grade.look, "none");
+
 console.log("pages tests passed");

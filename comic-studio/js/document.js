@@ -886,6 +886,21 @@
         panel.image.flipY = false;
         return true;
       },
+      setImageGrade: function (panelId, partial) {
+        var panel = panelById(panelId);
+        if (!panel || !panel.image || !partial) return;
+        var prev = panel.image.grade || normalizeGrade(null);
+        panel.image.grade = normalizeGrade({
+          exposure: partial.exposure != null ? partial.exposure : prev.exposure,
+          contrast: partial.contrast != null ? partial.contrast : prev.contrast,
+          highlights: partial.highlights != null ? partial.highlights : prev.highlights,
+          shadows: partial.shadows != null ? partial.shadows : prev.shadows,
+          saturation: partial.saturation != null ? partial.saturation : prev.saturation,
+          warmth: partial.warmth != null ? partial.warmth : prev.warmth,
+          tint: partial.tint != null ? partial.tint : prev.tint,
+          look: "none"
+        });
+      },
       setImageRotation: function (panelId, deg) {
         var panel = panelById(panelId);
         if (!panel || !panel.image) return;
@@ -1046,7 +1061,8 @@
             flipX: src.flipX === true,
             flipY: src.flipY === true,
             width: width,
-            height: height
+            height: height,
+            grade: normalizeGrade(src.grade)
           };
         });
       },
@@ -1117,7 +1133,8 @@
               flipX: p.image.flipX === true,
               flipY: p.image.flipY === true,
               width: Math.max(1, Number(p.image.width) || 1),
-              height: Math.max(1, Number(p.image.height) || 1)
+              height: Math.max(1, Number(p.image.height) || 1),
+              grade: normalizeGrade(p.image.grade)
             };
           }
           return { id: id, points: points, edgeCuts: p.edgeCuts.slice(), image: image };

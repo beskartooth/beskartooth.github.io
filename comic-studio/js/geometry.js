@@ -829,6 +829,17 @@ function cleanupCollinear(poly, others) {
     return best;
   }
 
+  function pageEdgeLock(pt, w, h) {
+    var e = 1.5;
+    var lockX = null;
+    var lockY = null;
+    if (Math.abs(pt.x) <= e) lockX = 0;
+    else if (Math.abs(pt.x - w) <= e) lockX = w;
+    if (Math.abs(pt.y) <= e) lockY = 0;
+    else if (Math.abs(pt.y - h) <= e) lockY = h;
+    return { x: lockX, y: lockY };
+  }
+
   function isPageBoundary(a, b, w, h) {
     var e = 0.75;
     if (Math.abs(a.y) <= e && Math.abs(b.y) <= e) return true;
@@ -958,6 +969,7 @@ function cleanupCollinear(poly, others) {
     deleteSegment: deleteSegment,
     deleteCut: deleteCut,
     nearestCut: nearestCut,
+    pageEdgeLock: pageEdgeLock,
     insetPolygon: insetPolygon,
     insetPoints: insetPoints
   };
