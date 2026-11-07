@@ -605,7 +605,7 @@
     }
     if (!hideText) {
       var pad = Math.max(4, (Number(letter.shapeStrokeWidth) || 0) * 0.5);
-      var maxW = letter.w * 0.98;
+      var maxW = letter.w * (letter.type === "thought" ? 0.62 : letter.type === "bubble" ? 0.72 : letter.type === "caption" ? 0.86 : 0.98);
       if (letter.type === "caption") {
         maxW = Math.max(8, letter.w - pad * 2);
         ctx.save();
@@ -613,9 +613,6 @@
         ctx.clip();
         drawText(ctx, letter, maxW, page);
         ctx.restore();
-      } else if (letter.type === "bubble" || letter.type === "thought") {
-        maxW = Math.max(8, letter.w - pad * 2);
-        drawText(ctx, letter, maxW, page);
       } else {
         drawText(ctx, letter, maxW, page);
       }
@@ -991,14 +988,7 @@
       var pw = Math.max(1, Math.round(doc.page.width));
       var ph = Math.max(1, Math.round(doc.page.height));
       var longEdge = Math.max(pw, ph);
-      var graded = gradeActive(gradeSettings(doc.page)) || dotSettings(doc.page);
-      if (!graded && doc.panels) {
-        for (var pi = 0; pi < doc.panels.length; pi++) {
-          var ig = doc.panels[pi].image && doc.panels[pi].image.grade;
-          if (ig && gradeActive(gradeSettings({ grade: ig }))) { graded = true; break; }
-        }
-      }
-      var scale = graded ? 1 : (longEdge >= 3840 ? 1 : Math.min(3, 3840 / longEdge));
+      var scale = longEdge >= 3840 ? 1 : Math.min(3, 3840 / longEdge);
       var maxPixels = 48 * 1024 * 1024;
       if (pw * scale * ph * scale > maxPixels) scale = Math.sqrt(maxPixels / (pw * ph));
       if (!(scale > 1.05)) scale = 1;
