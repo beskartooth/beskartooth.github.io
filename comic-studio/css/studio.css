@@ -334,6 +334,14 @@ h2 {
   padding: 6px 8px;
 }
 
+#tools, #props, #pages, #top, #foot, .bank-bar {
+  -webkit-user-select: none;
+  user-select: none;
+}
+#props input, #props textarea, #editor {
+  -webkit-user-select: text;
+  user-select: text;
+}
 #props label, .field {
   display: grid;
   gap: 4px;

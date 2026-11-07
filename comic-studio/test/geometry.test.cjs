@@ -381,6 +381,15 @@ function mulberry32(a) {
   assert(near(gb.x, -2, 0.2) && near(gb.w, 104, 0.2), "expand size " + gb.x + " " + gb.w);
 }
 
+{
+  const edge = G.pageEdgeLock({ x: 0, y: 40 }, 200, 100);
+  assert(edge.x === 0 && edge.y === null, "left edge locks x");
+  const corner = G.pageEdgeLock({ x: 200, y: 100 }, 200, 100);
+  assert(corner.x === 200 && corner.y === 100, "corner locks both");
+  const inner = G.pageEdgeLock({ x: 30, y: 40 }, 200, 100);
+  assert(inner.x === null && inner.y === null, "interior point is free");
+}
+
 if (failed) {
   console.error(failed + " assertion(s) failed");
   process.exit(1);

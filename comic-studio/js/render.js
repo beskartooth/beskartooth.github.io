@@ -250,7 +250,7 @@
     return "#" + h(o[0]) + h(o[1]) + h(o[2]);
   }
 
-  function gradeBitmap(canvas, grade) {
+  function gradeBitmap(canvas, grade, scale) {
     if (!gradeActive(grade)) return;
     var w = canvas.width;
     var h = canvas.height;
@@ -259,6 +259,9 @@
     var d = image.data;
     var lum = new Float32Array(w * h);
     var pencil = grade.look === "pencil";
+    if (!(scale > 0)) scale = 1;
+    var step = Math.max(1, Math.round(2.25 * scale));
+    var cell = Math.max(1, Math.round(2 * scale));
     var y;
     var x;
     for (y = 0; y < h; y++) {
@@ -279,17 +282,19 @@
         if (d[j + 3] < 8) continue;
         var edge = 0;
         if (pencil) {
-          if (x > 0) edge += Math.abs(lum[p] - lum[p - 1]);
-          if (y > 0) edge += Math.abs(lum[p] - lum[p - w]);
+          if (x >= step) edge += Math.abs(lum[p] - lum[p - step]);
+          if (y >= step) edge += Math.abs(lum[p] - lum[p - w * step]);
         }
         var o = applyLook(d[j] / 255, d[j + 1] / 255, d[j + 2] / 255, grade, edge);
         if (pencil) {
-          var n = (x * 374761393 + y * 668265263) | 0;
+          var gx = Math.floor(x / cell);
+          var gy = Math.floor(y / cell);
+          var n = (gx * 374761393 + gy * 668265263) | 0;
           n = Math.imul(n ^ (n >>> 13), 1274126177);
           var grain = ((n ^ (n >>> 16)) >>> 0) / 4294967296;
-          o[0] = clamp01(o[0] * (0.97 + grain * 0.045));
-          o[1] = clamp01(o[1] * (0.97 + grain * 0.045));
-          o[2] = clamp01(o[2] * (0.97 + grain * 0.045));
+          o[0] = clamp01(o[0] * (0.93 + grain * 0.1));
+          o[1] = clamp01(o[1] * (0.93 + grain * 0.1));
+          o[2] = clamp01(o[2] * (0.93 + grain * 0.1));
         }
         d[j] = o[0] * 255;
         d[j + 1] = o[1] * 255;
@@ -300,7 +305,7 @@
   }
 
   var dotCache = new Map();
-  function screenedImage(ctx, img, placed, clipShape, settings, grade) {
+  function screenedImage(ctx, img, placed, clipShape, settings, grade, imageGrade) {
     var scale = 1 / devicePixel(ctx);
     var b = G.bounds(clipShape);
     var pad = 2;
@@ -319,6 +324,7 @@
       placed.flipX ? 1 : 0, placed.flipY ? 1 : 0,
       settings ? settings.size : 0, settings ? Math.round(settings.strength * 100) : 0,
       grade ? [grade.exposure, grade.contrast, grade.highlights, grade.shadows, grade.saturation, grade.warmth, grade.tint, grade.look].join(",") : "",
+      imageGrade ? [imageGrade.exposure, imageGrade.contrast, imageGrade.highlights, imageGrade.shadows, imageGrade.saturation, imageGrade.warmth, imageGrade.tint].join(",") : "",
       Math.round(scale * 100),
       cw, ch, pts
     ].join("|");
@@ -333,7 +339,8 @@
       addLoop(octx, clipShape, false);
       octx.clip();
       paintPlacedImage(octx, img, placed);
-      if (grade && gradeActive(grade)) gradeBitmap(off, grade);
+      if (imageGrade && gradeActive(imageGrade)) gradeBitmap(off, imageGrade, scale);
+      if (grade && gradeActive(grade)) gradeBitmap(off, grade, scale);
       if (settings) screenBitmap(off, x0, y0, Math.max(1.5, settings.size * scale), settings.strength);
       dotCache.set(key, off);
       if (dotCache.size > 8) dotCache.delete(dotCache.keys().next().value);
@@ -597,18 +604,18 @@
       fillStroke(ctx, letter.shapeFill, letter.shapeStroke, letter.shapeStrokeWidth);
     }
     if (!hideText) {
-      var maxW = letter.w * (letter.type === "sfx" ? 0.98 : letter.type === "caption" ? 0.86 : letter.type === "thought" ? 0.62 : 0.72);
-      if (letter.type !== "sfx") {
+      var pad = Math.max(4, (Number(letter.shapeStrokeWidth) || 0) * 0.5);
+      var maxW = letter.w * 0.98;
+      if (letter.type === "caption") {
+        maxW = Math.max(8, letter.w - pad * 2);
         ctx.save();
-        if (letter.type === "caption") {
-          traceRoundRect(ctx, -letter.w / 2 + 8, -letter.h / 2 + 6, letter.w - 16, letter.h - 12, 6);
-        } else {
-          ctx.beginPath();
-          ctx.ellipse(0, 0, Math.max(1, letter.w * 0.36), Math.max(1, letter.h * 0.32), 0, 0, Math.PI * 2);
-        }
+        traceRoundRect(ctx, -letter.w / 2 + pad, -letter.h / 2 + pad, Math.max(8, letter.w - pad * 2), Math.max(8, letter.h - pad * 2), 6);
         ctx.clip();
         drawText(ctx, letter, maxW, page);
         ctx.restore();
+      } else if (letter.type === "bubble" || letter.type === "thought") {
+        maxW = Math.max(8, letter.w - pad * 2);
+        drawText(ctx, letter, maxW, page);
       } else {
         drawText(ctx, letter, maxW, page);
       }
@@ -758,8 +765,10 @@
         var img = getImage(panel.image.id);
         if (img && img.complete && img.naturalWidth) {
           var dots = dotSettings(page);
-          if (dots || gradeActive(grade)) {
-            screenedImage(ctx, img, panel.image, clipShape, dots, grade);
+          var imageGrade = gradeSettings({ grade: panel.image.grade });
+          imageGrade.look = "none";
+          if (dots || gradeActive(grade) || gradeActive(imageGrade)) {
+            screenedImage(ctx, img, panel.image, clipShape, dots, grade, imageGrade);
           } else {
             ctx.save();
             trace(ctx, clipShape);
@@ -982,7 +991,14 @@
       var pw = Math.max(1, Math.round(doc.page.width));
       var ph = Math.max(1, Math.round(doc.page.height));
       var longEdge = Math.max(pw, ph);
-      var scale = longEdge >= 3840 ? 1 : Math.min(3, 3840 / longEdge);
+      var graded = gradeActive(gradeSettings(doc.page)) || dotSettings(doc.page);
+      if (!graded && doc.panels) {
+        for (var pi = 0; pi < doc.panels.length; pi++) {
+          var ig = doc.panels[pi].image && doc.panels[pi].image.grade;
+          if (ig && gradeActive(gradeSettings({ grade: ig }))) { graded = true; break; }
+        }
+      }
+      var scale = graded ? 1 : (longEdge >= 3840 ? 1 : Math.min(3, 3840 / longEdge));
       var maxPixels = 48 * 1024 * 1024;
       if (pw * scale * ph * scale > maxPixels) scale = Math.sqrt(maxPixels / (pw * ph));
       if (!(scale > 1.05)) scale = 1;
