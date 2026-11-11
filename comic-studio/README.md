@@ -2,9 +2,9 @@
 
 A free comic page maker that runs entirely in your browser.
 
-Live page: https://beskartooth.github.io/comic-studio/
+Live page: https://besky.art/comic-studio/
 
-It is linked from the [Besky Art link tree](https://beskartooth.github.io/) as “Comic Studio — free comic page maker, beta”.
+It is linked from the [Besky Art link tree](https://besky.art/) as “Comic Studio — free comic page maker, beta”.
 
 ## Privacy
 
