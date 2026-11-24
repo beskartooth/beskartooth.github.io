@@ -267,8 +267,10 @@
       var letter = session.doc.letters[i];
       var local = toLocal(letter, pt);
       if (Math.abs(local.x) <= letter.w / 2 + 6 * unit && Math.abs(local.y) <= letter.h / 2 + 6 * unit) return letter;
-      if (letter.tail) {
-        var tip = { x: letterCenter(letter).x + letter.tail.dx, y: letterCenter(letter).y + letter.tail.dy };
+      var tails = [letter.tail, letter.tail2];
+      for (var t = 0; t < tails.length; t++) {
+        if (!tails[t]) continue;
+        var tip = { x: letterCenter(letter).x + tails[t].dx, y: letterCenter(letter).y + tails[t].dy };
         if (Math.hypot(pt.x - tip.x, pt.y - tip.y) <= 14 * unit) return letter;
       }
       var knob = rotPoint(letter, 0, -letter.h / 2 - 22 * unit);
@@ -290,10 +292,15 @@
     if (!letter) return null;
     var unit = pageUnit();
     var reach = 11 * unit;
-    if (letter.tail) {
-      var tip = { x: letterCenter(letter).x + letter.tail.dx, y: letterCenter(letter).y + letter.tail.dy };
-      if (Math.hypot(pt.x - tip.x, pt.y - tip.y) <= reach) return "tail";
-    }
+    var tailHit = null;
+    var tailDist = reach;
+    [["tail", letter.tail], ["tail2", letter.tail2]].forEach(function (pair) {
+      if (!pair[1]) return;
+      var tip = { x: letterCenter(letter).x + pair[1].dx, y: letterCenter(letter).y + pair[1].dy };
+      var dist = Math.hypot(pt.x - tip.x, pt.y - tip.y);
+      if (dist <= tailDist) { tailHit = pair[0]; tailDist = dist; }
+    });
+    if (tailHit) return tailHit;
     var knob = rotPoint(letter, 0, -letter.h / 2 - 22 * unit);
     if (Math.hypot(pt.x - knob.x, pt.y - knob.y) <= reach) return "rotate";
     var spots = [
@@ -789,6 +796,258 @@
     appendStyles(selProps, false);
   }
 
+  function bubbleRange(label, value, min, max, onInput) {
+    var input = document.createElement("input");
+    input.type = "range";
+    input.min = String(min);
+    input.max = String(max);
+    input.value = String(value);
+    var row = field(label, input);
+    bindGesture(input, function () { onInput(Number(input.value)); });
+    return row;
+  }
+
+  function bubbleCheck(label, checked, onChange) {
+    var input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = checked;
+    var row = document.createElement("label");
+    row.className = "check";
+    row.appendChild(input);
+    row.appendChild(document.createTextNode(" " + label));
+    input.addEventListener("change", function () {
+      session.begin();
+      onChange(input.checked);
+      session.end();
+      render();
+    });
+    return row;
+  }
+
+  function bubbleSelect(label, value, options, onChange) {
+    var select = document.createElement("select");
+    options.forEach(function (pair) {
+      var opt = document.createElement("option");
+      opt.value = pair[0];
+      opt.textContent = pair[1];
+      select.appendChild(opt);
+    });
+    select.value = value;
+    if (select.selectedIndex < 0) select.selectedIndex = 0;
+    select.addEventListener("change", function () {
+      session.begin();
+      onChange(select.value);
+      session.end();
+      render();
+    });
+    return field(label, select);
+  }
+
+  function appendBubbleStyle(host, letter) {
+    if (!letter || letter.type === "sfx") return;
+    var box = document.createElement("details");
+    box.className = "bubble-style";
+    var summary = document.createElement("summary");
+    summary.textContent = "Bubble style";
+    box.appendChild(summary);
+    var id = letter.id;
+    function current() { return letterById(id); }
+
+    if (letter.type === "bubble") {
+      box.appendChild(bubbleSelect("Shape", letter.shape || "", [
+        ["", "Oval"],
+        ["round", "Round"],
+        ["rect", "Rectangle"],
+        ["roundrect", "Rounded rectangle"],
+        ["burst", "Shout"],
+        ["wobble", "Wobbly"],
+        ["whisper", "Whisper"],
+        ["radio", "Radio"],
+        ["icicle", "Icicle"]
+      ], function (value) { session.updateLetter(id, { shape: value }); }));
+    }
+    if (letter.type === "thought") {
+      box.appendChild(bubbleRange("Cloud bumps", letter.puffCount == null ? 16 : letter.puffCount, 6, 32, function (value) {
+        session.updateLetter(id, { puffCount: value });
+      }));
+      box.appendChild(bubbleRange("Puff size", letter.puffSize == null ? 14 : letter.puffSize, 2, 40, function (value) {
+        session.updateLetter(id, { puffSize: value });
+      }));
+    }
+    if (letter.type === "caption") {
+      box.appendChild(bubbleSelect("Caption", letter.captionStyle || "", [
+        ["", "Box"],
+        ["torn", "Torn paper"],
+        ["sticky", "Sticky note"],
+        ["bar", "Narrator bar"]
+      ], function (value) { session.updateLetter(id, { captionStyle: value }); }));
+      box.appendChild(bubbleCheck("Slanted corners", !!letter.slantCorners, function (on) {
+        session.updateLetter(id, { slantCorners: on });
+      }));
+      box.appendChild(bubbleSelect("Texture", letter.texture || "", [
+        ["", "Plain"],
+        ["parchment", "Parchment"],
+        ["halftone", "Halftone"]
+      ], function (value) { session.updateLetter(id, { texture: value }); }));
+    }
+    if (letter.type === "bubble" || letter.type === "thought") {
+      if (letter.type === "bubble") {
+        box.appendChild(bubbleRange("Tail curve", letter.tailCurve || 0, -120, 120, function (value) {
+          session.updateLetter(id, { tailCurve: value });
+        }));
+      }
+      box.appendChild(bubbleRange("Tail base", letter.tailWidth == null ? 42 : letter.tailWidth, 12, 110, function (value) {
+        session.updateLetter(id, { tailWidth: value });
+      }));
+      var split = button(letter.tail2 ? "Remove split tail" : "Split tail", "", function () {
+        var live = current();
+        if (!live || !live.tail) return;
+        session.begin();
+        if (live.tail2) session.updateLetter(id, { tail2: null });
+        else session.updateLetter(id, { tail2: { dx: live.tail.dx + 72, dy: live.tail.dy } });
+        session.end();
+        split.textContent = current() && current().tail2 ? "Remove split tail" : "Split tail";
+        render();
+      });
+      box.appendChild(split);
+    }
+    box.appendChild(bubbleRange("Fill opacity", letter.shapeAlpha == null ? 100 : letter.shapeAlpha, 0, 100, function (value) {
+      session.updateLetter(id, { shapeAlpha: value });
+    }));
+    var shadowToggle = bubbleCheck("Drop shadow", !!letter.shadow, function (on) {
+      session.updateLetter(id, { shadow: on });
+    });
+    box.appendChild(shadowToggle);
+    function enableShadow() {
+      var toggle = shadowToggle.querySelector("input");
+      if (toggle) toggle.checked = true;
+    }
+    box.appendChild(bubbleRange("Shadow X", letter.shadowDx == null ? 8 : letter.shadowDx, -40, 40, function (value) {
+      enableShadow();
+      session.updateLetter(id, { shadow: true, shadowDx: value });
+    }));
+    box.appendChild(bubbleRange("Shadow Y", letter.shadowDy == null ? 8 : letter.shadowDy, -40, 40, function (value) {
+      enableShadow();
+      session.updateLetter(id, { shadow: true, shadowDy: value });
+    }));
+    var shadowColor = document.createElement("input");
+    shadowColor.type = "color";
+    shadowColor.value = /^#[0-9a-fA-F]{6}$/.test(letter.shadowColor || "") ? letter.shadowColor : "#222222";
+    box.appendChild(field("Shadow color", shadowColor));
+    bindGesture(shadowColor, function () {
+      enableShadow();
+      session.updateLetter(id, { shadow: true, shadowColor: shadowColor.value });
+    });
+    box.appendChild(bubbleSelect("Align", letter.align || "center", [
+      ["center", "Center"],
+      ["left", "Left"],
+      ["right", "Right"]
+    ], function (value) { session.updateLetter(id, { align: value }); }));
+    box.appendChild(bubbleRange("Line spacing", letter.leading == null ? 115 : letter.leading, 80, 180, function (value) {
+      session.updateLetter(id, { leading: value });
+    }));
+    box.appendChild(bubbleCheck("Bold", Number(letter.fontWeight) >= 700, function (on) {
+      session.updateLetter(id, { fontWeight: on ? 700 : 400 });
+    }));
+    box.appendChild(bubbleCheck("Italic", letter.fontStyle === "italic", function (on) {
+      session.updateLetter(id, { fontStyle: on ? "italic" : "normal" });
+    }));
+    box.appendChild(bubbleCheck("Fit text to bubble", !!letter.autoFit, function (on) {
+      session.updateLetter(id, { autoFit: on });
+    }));
+
+    var charRow = document.createElement("div");
+    charRow.className = "style-save";
+    var charName = document.createElement("input");
+    charName.type = "text";
+    charName.maxLength = 40;
+    charName.placeholder = "Character";
+    charName.setAttribute("aria-label", "Character name");
+    charRow.appendChild(charName);
+    charRow.appendChild(button("Save character", "", function () {
+      var live = current();
+      if (!live) return;
+      var name = charName.value.trim() || "Character";
+      var item = {
+        id: "char-" + Date.now().toString(36),
+        name: name,
+        font: live.font,
+        fontWeight: live.fontWeight,
+        fontStyle: live.fontStyle,
+        fill: live.fill,
+        stroke: live.stroke,
+        strokeWidth: live.strokeWidth,
+        shapeFill: live.shapeFill,
+        shapeStroke: live.shapeStroke,
+        shapeStrokeWidth: live.shapeStrokeWidth
+      };
+      characters.push(item);
+      persistCharacters();
+      session.setCharacters(characters);
+      session.begin();
+      session.updateLetter(id, { characterId: item.id });
+      session.end();
+      setStatus("Saved " + name + ".");
+      propsKey = "";
+      syncProps();
+      render();
+    }));
+    box.appendChild(charRow);
+    var charOptions = [["", "Character…"]].concat(characters.map(function (item) { return [item.id, item.name]; }));
+    box.appendChild(bubbleSelect("Apply character", letter.characterId || "", charOptions, function (value) {
+      if (!value) {
+        session.updateLetter(id, { characterId: "" });
+        return;
+      }
+      var item = null;
+      for (var i = 0; i < characters.length; i++) if (characters[i].id === value) item = characters[i];
+      if (!item) return;
+      session.updateLetter(id, {
+        characterId: item.id,
+        font: item.font,
+        fontWeight: item.fontWeight,
+        fontStyle: item.fontStyle,
+        fill: item.fill,
+        stroke: item.stroke,
+        strokeWidth: item.strokeWidth,
+        shapeFill: item.shapeFill,
+        shapeStroke: item.shapeStroke,
+        shapeStrokeWidth: item.shapeStrokeWidth
+      });
+      propsKey = "";
+      syncProps();
+    }));
+
+    var others = [["", "No link"]];
+    session.doc.letters.forEach(function (other) {
+      if (!other || other.id === id) return;
+      var preview = String(other.text || other.type || "Letter").replace(/\s+/g, " ").slice(0, 28);
+      others.push([other.id, preview || other.type]);
+    });
+    box.appendChild(bubbleSelect("Link to", letter.linkTo || "", others, function (value) {
+      session.updateLetter(id, { linkTo: value });
+    }));
+
+    var actions = document.createElement("div");
+    actions.className = "bubble-actions";
+    actions.appendChild(button("Copy style", "", function () {
+      var live = current();
+      if (!live) return;
+      styleClipboard = copiedStyle(live);
+      setStatus("Style copied.");
+    }));
+    actions.appendChild(button("Paste style", "", function () {
+      if (!styleClipboard || !current()) return;
+      session.applyLetterStyle(id, styleClipboard);
+      propsKey = "";
+      syncProps();
+      render();
+      setStatus("Style pasted.");
+    }));
+    box.appendChild(actions);
+    host.appendChild(box);
+  }
+
   function buildLetterProps() {
     var letter = letterById(selection.id);
     if (!letter) return;
@@ -917,6 +1176,7 @@
       ssw.value = String(Math.round(letter.shapeStrokeWidth));
       selProps.appendChild(field("Border width", ssw));
       bindGesture(ssw, function () { session.updateLetter(letter.id, { shapeStrokeWidth: Number(ssw.value) }); });
+      appendBubbleStyle(selProps, letter);
     }
 
     var rot = document.createElement("input");
@@ -977,14 +1237,16 @@
     var letter = letterById(state.id);
     if (!letter) return;
     var c = letterCenter(state.start);
-    if (state.handle === "tail" && letter.tail) {
+    if ((state.handle === "tail" && letter.tail) || (state.handle === "tail2" && letter.tail2)) {
       var dx = pt.x - c.x;
       var dy = pt.y - c.y;
       if (shift) {
         if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
         else dx = 0;
       }
-      session.updateLetter(letter.id, { tail: { dx: dx, dy: dy } });
+      var tailPatch = {};
+      tailPatch[state.handle] = { dx: dx, dy: dy };
+      session.updateLetter(letter.id, tailPatch);
       return;
     }
     if (state.handle === "rotate") {
@@ -994,7 +1256,7 @@
       session.updateLetter(letter.id, { rotation: deg });
       return;
     }
-    if ((alt || ctrl) && state.handle !== "tail" && state.handle !== "rotate") {
+    if ((alt || ctrl) && state.handle !== "tail" && state.handle !== "tail2" && state.handle !== "rotate") {
       var dragX = pt.x - state.origin.x;
       var dragY = pt.y - state.origin.y;
       if (alt && !ctrl) {
@@ -2208,6 +2470,8 @@
         var project = JSON.parse(String(reader.result));
         session.loadJSON(project);
         mergeStyles(project.styles);
+        if (Array.isArray(project.characters)) mergeCharacters(project.characters);
+        else session.setCharacters(characters);
         selection = null;
         cutPoints = [];
         preview = null;
@@ -2477,6 +2741,52 @@
     }
   ];
   var styles = loadStyles();
+  var CHAR_KEY = "comic-studio-characters";
+  var styleClipboard = null;
+  function normalizeStoredCharacter(raw) {
+    if (!raw || typeof raw.name !== "string" || !raw.name.trim()) return null;
+    return {
+      id: String(raw.id || ("char-" + Date.now().toString(36))),
+      name: raw.name.trim().slice(0, 40),
+      font: typeof raw.font === "string" && raw.font ? raw.font : "Comic Neue",
+      fontWeight: Number(raw.fontWeight) || 400,
+      fontStyle: raw.fontStyle === "italic" ? "italic" : "normal",
+      fill: styleHex(raw.fill, "#1c1c1c"),
+      stroke: styleHex(raw.stroke, "#ffffff"),
+      strokeWidth: Math.max(0, Math.min(80, Number(raw.strokeWidth) || 0)),
+      shapeFill: styleHex(raw.shapeFill, "#ffffff"),
+      shapeStroke: styleHex(raw.shapeStroke, "#161616"),
+      shapeStrokeWidth: Math.max(0, Math.min(48, Number(raw.shapeStrokeWidth) || 0))
+    };
+  }
+  function loadCharacters() {
+    var raw = storageGet(CHAR_KEY);
+    if (!raw) return [];
+    try {
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map(normalizeStoredCharacter).filter(Boolean);
+    } catch (err) {
+      return [];
+    }
+  }
+  var characters = loadCharacters();
+  function persistCharacters() {
+    storageSet(CHAR_KEY, JSON.stringify(characters));
+    session.setCharacters(characters);
+  }
+  function mergeCharacters(incoming) {
+    (incoming || []).forEach(function (raw) {
+      var item = normalizeStoredCharacter(raw);
+      if (!item) return;
+      var idx = -1;
+      for (var i = 0; i < characters.length; i++) if (characters[i].id === item.id) idx = i;
+      if (idx >= 0) characters[idx] = item;
+      else characters.push(item);
+    });
+    persistCharacters();
+  }
+  session.setCharacters(characters);
   var tourStep = 0;
 
   function storageGet(key) {
@@ -2491,7 +2801,7 @@
   function normalizeStyle(raw) {
     if (!raw || typeof raw.name !== "string" || !raw.name.trim()) return null;
     if (!Doc.LETTER_PRESETS[raw.type]) return null;
-    return {
+    var style = {
       id: String(raw.id || ("style-" + Date.now().toString(36))),
       name: raw.name.trim().slice(0, 40),
       type: raw.type,
@@ -2517,6 +2827,10 @@
       perspective: Math.max(-1, Math.min(1, Number(raw.perspective) || 0)),
       tail: raw.tail && typeof raw.tail === "object" ? { dx: Number(raw.tail.dx) || 0, dy: Number(raw.tail.dy) || 0 } : null
     };
+    ["shape", "captionStyle", "shadow", "shadowDx", "shadowDy", "shadowColor", "shapeAlpha", "tailCurve", "tailWidth", "tail2", "puffCount", "puffSize", "align", "leading", "autoFit", "texture", "slantCorners", "characterId"].forEach(function (key) {
+      if (Object.prototype.hasOwnProperty.call(raw, key)) style[key] = raw[key];
+    });
+    return style;
   }
   function loadStyles() {
     var raw = storageGet(STYLE_KEY);
@@ -2569,8 +2883,29 @@
       skewX: letter.skewX || 0,
       skewY: letter.skewY || 0,
       perspective: letter.perspective || 0,
-      tail: letter.tail ? { dx: letter.tail.dx, dy: letter.tail.dy } : null
+      tail: letter.tail ? { dx: letter.tail.dx, dy: letter.tail.dy } : null,
+      shape: letter.shape || "",
+      captionStyle: letter.captionStyle || "",
+      shadow: !!letter.shadow,
+      shadowDx: letter.shadowDx == null ? 8 : letter.shadowDx,
+      shadowDy: letter.shadowDy == null ? 8 : letter.shadowDy,
+      shadowColor: letter.shadowColor || "#222222",
+      shapeAlpha: letter.shapeAlpha == null ? 100 : letter.shapeAlpha,
+      tailCurve: letter.tailCurve || 0,
+      tailWidth: letter.tailWidth == null ? 42 : letter.tailWidth,
+      tail2: letter.tail2 ? { dx: letter.tail2.dx, dy: letter.tail2.dy } : null,
+      puffCount: letter.puffCount == null ? 16 : letter.puffCount,
+      puffSize: letter.puffSize == null ? 14 : letter.puffSize,
+      align: letter.align || "center",
+      leading: letter.leading == null ? 115 : letter.leading,
+      autoFit: !!letter.autoFit,
+      texture: letter.texture || "none",
+      slantCorners: !!letter.slantCorners,
+      characterId: letter.characterId || ""
     });
+  }
+  function copiedStyle(letter) {
+    return styleFromLetter(letter, "Copied style");
   }
   function appendStyles(host, canSave) {
     var box = document.createElement("details");

@@ -392,8 +392,9 @@ label .deg input { width: 5.5rem; }
 #tipbar .tip-k { color: var(--accent); font-weight: 700; }
 #tip-text { flex: 1; min-width: 0; }
 #tipbar button { padding: 2px 8px; font-size: 12px; }
-.styles-block { margin-top: 12px; }
-.styles-block summary {
+.styles-block, .bubble-style { margin-top: 12px; }
+.bubble-style { border-top: 1px solid var(--line); padding-top: 8px; }
+.styles-block summary, .bubble-style summary {
   cursor: pointer;
   font-size: 11px;
   letter-spacing: 0.12em;
@@ -401,7 +402,9 @@ label .deg input { width: 5.5rem; }
   color: var(--muted);
   font-weight: 700;
 }
-.style-save, .style-row { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+.style-save, .style-row, .bubble-actions { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+.bubble-actions { flex-wrap: wrap; }
+.bubble-style .check { margin-top: 6px; }
 .style-save input, .style-row input { flex: 1; min-width: 0; }
 .style-row .style-apply { flex: 1; text-align: left; }
 .style-row .mini { flex: 0 0 auto; padding: 4px 7px; }

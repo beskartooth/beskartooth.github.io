@@ -208,6 +208,130 @@
     };
   }
 
+  var BUBBLE_SHAPES = {
+    oval: 1, round: 1, rect: 1, roundrect: 1, burst: 1, wobble: 1,
+    whisper: 1, radio: 1, icicle: 1, cloud: 1
+  };
+
+  function assignBubble(letter, partial) {
+    if (!letter || !partial) return;
+    if ("shape" in partial) {
+      if (BUBBLE_SHAPES[partial.shape]) letter.shape = partial.shape;
+      else delete letter.shape;
+    }
+    if ("captionStyle" in partial) {
+      if (partial.captionStyle === "torn" || partial.captionStyle === "sticky" || partial.captionStyle === "bar") letter.captionStyle = partial.captionStyle;
+      else delete letter.captionStyle;
+    }
+    if ("shadow" in partial) {
+      if (partial.shadow) letter.shadow = true;
+      else delete letter.shadow;
+    }
+    if ("shadowDx" in partial) {
+      var sdx = Number(partial.shadowDx);
+      if (!isFinite(sdx)) delete letter.shadowDx;
+      else letter.shadowDx = clamp(sdx, -120, 120);
+    }
+    if ("shadowDy" in partial) {
+      var sdy = Number(partial.shadowDy);
+      if (!isFinite(sdy)) delete letter.shadowDy;
+      else letter.shadowDy = clamp(sdy, -120, 120);
+    }
+    if ("shadowColor" in partial) {
+      if (isHex(partial.shadowColor)) letter.shadowColor = partial.shadowColor;
+      else delete letter.shadowColor;
+    }
+    if ("shapeAlpha" in partial) {
+      var alpha = Number(partial.shapeAlpha);
+      if (!isFinite(alpha) || alpha >= 99.5) delete letter.shapeAlpha;
+      else letter.shapeAlpha = clamp(alpha, 0, 100);
+    }
+    if ("tailCurve" in partial) {
+      var curve = Number(partial.tailCurve);
+      if (!isFinite(curve) || Math.abs(curve) < 0.5) delete letter.tailCurve;
+      else letter.tailCurve = clamp(curve, -200, 200);
+    }
+    if ("tailWidth" in partial) {
+      var width = Number(partial.tailWidth);
+      if (!isFinite(width) || Math.abs(width - 42) < 0.5) delete letter.tailWidth;
+      else letter.tailWidth = clamp(width, 12, 110);
+    }
+    if ("tail2" in partial) {
+      if (partial.tail2 && typeof partial.tail2 === "object") {
+        letter.tail2 = { dx: Number(partial.tail2.dx) || 0, dy: Number(partial.tail2.dy) || 0 };
+      } else delete letter.tail2;
+    }
+    if ("puffCount" in partial) {
+      var puffCount = Number(partial.puffCount);
+      if (!isFinite(puffCount) || Math.round(puffCount) === 16) delete letter.puffCount;
+      else letter.puffCount = clamp(Math.round(puffCount), 6, 32);
+    }
+    if ("puffSize" in partial) {
+      var puffSize = Number(partial.puffSize);
+      if (!isFinite(puffSize) || Math.abs(puffSize - 14) < 0.5) delete letter.puffSize;
+      else letter.puffSize = clamp(puffSize, 2, 40);
+    }
+    if ("align" in partial) {
+      if (partial.align === "left" || partial.align === "right") letter.align = partial.align;
+      else delete letter.align;
+    }
+    if ("leading" in partial) {
+      var leading = Number(partial.leading);
+      if (!isFinite(leading) || Math.abs(leading - 115) < 0.5) delete letter.leading;
+      else letter.leading = clamp(leading, 80, 220);
+    }
+    if ("autoFit" in partial) {
+      if (partial.autoFit) letter.autoFit = true;
+      else delete letter.autoFit;
+    }
+    if ("linkTo" in partial) {
+      if (typeof partial.linkTo === "string" && partial.linkTo && partial.linkTo !== letter.id) letter.linkTo = partial.linkTo;
+      else delete letter.linkTo;
+    }
+    if ("texture" in partial) {
+      if (partial.texture === "parchment" || partial.texture === "halftone") letter.texture = partial.texture;
+      else delete letter.texture;
+    }
+    if ("slantCorners" in partial) {
+      if (partial.slantCorners) letter.slantCorners = true;
+      else delete letter.slantCorners;
+    }
+    if ("characterId" in partial) {
+      if (typeof partial.characterId === "string" && partial.characterId) letter.characterId = partial.characterId.slice(0, 80);
+      else delete letter.characterId;
+    }
+    if (!letter.tail) delete letter.tail2;
+  }
+
+  function normalizeCharacter(raw, index) {
+    if (!raw || typeof raw.name !== "string" || !raw.name.trim()) return null;
+    return {
+      id: String(raw.id || ("char-" + (index + 1))),
+      name: raw.name.trim().slice(0, 40),
+      font: typeof raw.font === "string" && raw.font ? raw.font : "Comic Neue",
+      fontWeight: Number(raw.fontWeight) || 400,
+      fontStyle: raw.fontStyle === "italic" ? "italic" : "normal",
+      fill: isHex(raw.fill) ? raw.fill : "#1c1c1c",
+      stroke: isHex(raw.stroke) ? raw.stroke : "#ffffff",
+      strokeWidth: clamp(Number(raw.strokeWidth) || 0, 0, 80),
+      shapeFill: isHex(raw.shapeFill) ? raw.shapeFill : "#ffffff",
+      shapeStroke: isHex(raw.shapeStroke) ? raw.shapeStroke : "#161616",
+      shapeStrokeWidth: clamp(Number(raw.shapeStrokeWidth) || 0, 0, 48)
+    };
+  }
+
+  function normalizeCharacters(list) {
+    var seen = {};
+    var out = [];
+    (list || []).forEach(function (raw, index) {
+      var item = normalizeCharacter(raw, index);
+      if (!item || seen[item.id]) return;
+      seen[item.id] = true;
+      out.push(item);
+    });
+    return out;
+  }
+
   function applyLetterLook(letter, src) {
     var from = src || {};
     letter.highlight = isHex(from.highlight) ? from.highlight : (isHex(letter.highlight) ? letter.highlight : "#fff3a0");
@@ -449,6 +573,7 @@
       }
       if (src.text != null) letter.text = String(src.text).slice(0, 2000);
       applyLetterLook(letter, src);
+      assignBubble(letter, src);
       return letter;
     }
 
@@ -488,11 +613,17 @@
       } else if (!letter.tail && LETTER_PRESETS[letter.type] && LETTER_PRESETS[letter.type].tail) {
         letter.tail = structuredClone(LETTER_PRESETS[letter.type].tail);
       }
+      var bubblePartial = {};
+      ["shape", "captionStyle", "shadow", "shadowDx", "shadowDy", "shadowColor", "shapeAlpha", "tailCurve", "tailWidth", "tail2", "puffCount", "puffSize", "align", "leading", "autoFit", "texture", "slantCorners", "characterId"].forEach(function (key) {
+        if (Object.prototype.hasOwnProperty.call(style, key)) bubblePartial[key] = style[key];
+      });
+      assignBubble(letter, bubblePartial);
     }
 
     state.bank = [];
     state.pages = [];
     state.index = 0;
+    state.characters = [];
     blank();
     state.clean = projectJSON();
 
@@ -981,6 +1112,7 @@
           if (partial.tail.dx != null) letter.tail.dx = partial.tail.dx;
           if (partial.tail.dy != null) letter.tail.dy = partial.tail.dy;
         }
+        assignBubble(letter, partial);
         letter.w = Math.max(48, letter.w);
         letter.h = Math.max(36, letter.h);
         letter.fontSize = clamp(letter.fontSize, 8, 400);
@@ -1080,7 +1212,7 @@
             letters: structuredClone(doc.letters)
           };
         }
-        return {
+        var payload = {
           type: "comic-studio",
           version: 2,
           pages: state.pages.map(packPage),
@@ -1096,6 +1228,14 @@
             };
           }).filter(Boolean)
         };
+        if (state.characters && state.characters.length) payload.characters = state.characters.map(function (item) { return Object.assign({}, item); });
+        return payload;
+      },
+      characters: function () {
+        return state.characters.map(function (item) { return Object.assign({}, item); });
+      },
+      setCharacters: function (list) {
+        state.characters = normalizeCharacters(list);
       },
       loadJSON: function (raw) {
         var data = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -1169,6 +1309,7 @@
           if (src.skewY != null) letter.skewY = clamp(Number(src.skewY) || 0, -400, 400);
           if (src.perspective != null) letter.perspective = clamp(Number(src.perspective) || 0, -1, 1);
           applyLetterLook(letter, src);
+          assignBubble(letter, src);
           letters.push(letter);
         });
         var doc = {
@@ -1211,6 +1352,7 @@
         images.forEach(function (url, id) { state.images.set(id, url); });
         state.pages = loaded;
         state.index = 0;
+        state.characters = Array.isArray(data.characters) ? normalizeCharacters(data.characters) : [];
         setBank(bank);
         attach();
         gc();
