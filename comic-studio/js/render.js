@@ -380,15 +380,12 @@
     if (!curve) {
       ctx.lineTo(tx, ty);
     } else {
-      var mx = (p1x + tx) / 2;
-      var my = (p1y + ty) / 2;
-      var nx = -(ty - cy);
-      var ny = tx - cx;
-      var nlen = Math.hypot(nx, ny) || 1;
-      ctx.quadraticCurveTo(mx + nx / nlen * curve, my + ny / nlen * curve, tx, ty);
-      var mx2 = (p2x + tx) / 2;
-      var my2 = (p2y + ty) / 2;
-      ctx.quadraticCurveTo(mx2 + nx / nlen * curve, my2 + ny / nlen * curve, p2x, p2y);
+      var len = Math.hypot(tx - cx, ty - cy) || 1;
+      var amount = Math.max(-len * 0.35, Math.min(len * 0.35, curve));
+      var nx = -(ty - cy) / len;
+      var ny = (tx - cx) / len;
+      ctx.quadraticCurveTo((p2x + tx) / 2 + nx * amount, (p2y + ty) / 2 + ny * amount, tx, ty);
+      ctx.quadraticCurveTo((p1x + tx) / 2 + nx * amount, (p1y + ty) / 2 + ny * amount, p1x, p1y);
     }
     ctx.closePath();
   }
@@ -549,14 +546,16 @@
     }
   }
 
-  function fittedSize(ctx, letter, maxWidth) {
+  function fittedSize(ctx, letter, maxWidth, fitHeight) {
     var lead = letter.leading == null ? 1.15 : Math.max(80, Math.min(220, Number(letter.leading))) / 100;
+    var limit = letter.h * 0.78;
+    if (fitHeight != null) limit = Math.min(limit, fitHeight);
     var size = letter.fontSize;
     var guard = 0;
     while (size > 8 && guard < 24) {
       ctx.font = fontString(letter, size);
       var lines = wrapLines(ctx, letter.text, Math.max(8, maxWidth));
-      var tooTall = lines.length * size * lead > letter.h * 0.78;
+      var tooTall = lines.length * size * lead > limit;
       var tooWide = false;
       for (var i = 0; i < lines.length; i++) {
         if (ctx.measureText(lines[i]).width > maxWidth + 0.5) tooWide = true;
@@ -568,10 +567,11 @@
     return Math.max(8, size);
   }
 
-  function drawText(ctx, letter, maxWidth, page) {
+  function drawText(ctx, letter, maxWidth, page, fitHeight) {
     ctx.save();
-    var drawSize = letter.autoFit ? fittedSize(ctx, letter, maxWidth) : letter.fontSize;
-    ctx.font = letter.autoFit ? fontString(letter, drawSize) : fontString(letter);
+    var shrink = letter.autoFit || fitHeight != null;
+    var drawSize = shrink ? fittedSize(ctx, letter, maxWidth, fitHeight) : letter.fontSize;
+    ctx.font = shrink ? fontString(letter, drawSize) : fontString(letter);
     var align = letter.align === "left" || letter.align === "right" ? letter.align : "center";
     ctx.textAlign = align;
     ctx.textBaseline = "middle";
@@ -582,7 +582,7 @@
     if (shearX || shearY) ctx.transform(1, shearY, shearX, 1, 0, 0);
     var lines = wrapLines(ctx, letter.text, Math.max(8, maxWidth));
     var lead = letter.leading == null ? 1.15 : Math.max(80, Math.min(220, Number(letter.leading))) / 100;
-    var lh = letter.leading == null && !letter.autoFit ? letter.fontSize * 1.15 : drawSize * lead;
+    var lh = letter.leading == null && !shrink ? letter.fontSize * 1.15 : drawSize * lead;
     var y = -((lines.length - 1) * lh) / 2;
     var xOff = align === "left" ? -maxWidth / 2 : align === "right" ? maxWidth / 2 : 0;
     var warped = (letter.warp === "arc" || letter.warp === "wave" || letter.warp === "bulge") && Number(letter.warpAmount);
@@ -653,59 +653,6 @@
     return true;
   }
 
-  function traceBurst(ctx, rx, ry) {
-    var n = 16;
-    ctx.beginPath();
-    for (var i = 0; i < n; i++) {
-      var t = (i / n) * Math.PI * 2 - Math.PI / 2;
-      var inner = i % 2 === 1;
-      var x = Math.cos(t) * rx * (inner ? 0.68 : 1);
-      var y = Math.sin(t) * ry * (inner ? 0.68 : 1);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-  }
-
-  function traceWobble(ctx, rx, ry, seed) {
-    var rand = mulberry(seed);
-    var n = 28;
-    ctx.beginPath();
-    for (var i = 0; i <= n; i++) {
-      var t = (i / n) * Math.PI * 2;
-      var wob = 0.84 + rand() * 0.22;
-      var x = Math.cos(t) * rx * wob;
-      var y = Math.sin(t) * ry * wob;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-  }
-
-  function traceRadio(ctx, rx, ry) {
-    var n = 36;
-    ctx.beginPath();
-    for (var i = 0; i < n; i++) {
-      var t = (i / n) * Math.PI * 2;
-      var jag = i % 3 === 0 ? 1 : 0.86;
-      var x = Math.cos(t) * rx * jag;
-      var y = Math.sin(t) * ry * jag;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-  }
-
-  function traceIcicle(ctx, rx, ry) {
-    ctx.beginPath();
-    ctx.moveTo(-rx, -ry * 0.15);
-    ctx.quadraticCurveTo(-rx, -ry, 0, -ry);
-    ctx.quadraticCurveTo(rx, -ry, rx, -ry * 0.15);
-    var n = 6;
-    for (var i = n; i >= 0; i--) {
-      var x = -rx + (2 * rx) * (i / n);
-      ctx.lineTo(x, i % 2 === 0 ? ry : ry * 0.12);
-    }
-    ctx.closePath();
-  }
-
   function traceTorn(ctx, w, h, seed) {
     var rand = mulberry(seed);
     var x0 = -w / 2;
@@ -748,26 +695,232 @@
     ctx.rect(-cx, -letter.h / 2, page.width, letter.h);
   }
 
-  function traceTailSpike(ctx, letter, tail) {
-    var rx = letter.w / 2;
-    var ry = letter.h / 2;
-    var spread = letter.tailWidth == null ? 0.42 : Math.max(0.12, Math.min(1.15, Number(letter.tailWidth) / 100));
-    var ang = Math.atan2(tail.dy, tail.dx);
-    var base = Math.min(rx, ry) * spread;
-    var bx = Math.cos(ang) * rx * 0.82;
-    var by = Math.sin(ang) * ry * 0.82;
-    var px = -Math.sin(ang) * base;
-    var py = Math.cos(ang) * base;
-    ctx.beginPath();
-    ctx.moveTo(bx + px, by + py);
-    if (letter.tailCurve) {
-      var bend = Number(letter.tailCurve) || 0;
-      ctx.quadraticCurveTo((bx + px + tail.dx) / 2 - Math.sin(ang) * bend, (by + py + tail.dy) / 2 + Math.cos(ang) * bend, tail.dx, tail.dy);
-      ctx.quadraticCurveTo((bx - px + tail.dx) / 2 - Math.sin(ang) * bend, (by - py + tail.dy) / 2 + Math.cos(ang) * bend, bx - px, by - py);
-    } else {
-      ctx.lineTo(tail.dx, tail.dy);
-      ctx.lineTo(bx - px, by - py);
+  function burstPoints(rx, ry) {
+    var pts = [];
+    var n = 16;
+    for (var i = 0; i < n; i++) {
+      var t = (i / n) * Math.PI * 2 - Math.PI / 2;
+      var inner = i % 2 === 1;
+      pts.push({ x: Math.cos(t) * rx * (inner ? 0.68 : 1), y: Math.sin(t) * ry * (inner ? 0.68 : 1) });
     }
+    return pts;
+  }
+
+  function wobblePoints(rx, ry, seed) {
+    var rand = mulberry(seed);
+    var pts = [];
+    var n = 28;
+    for (var i = 0; i < n; i++) {
+      var t = (i / n) * Math.PI * 2;
+      var wob = 0.84 + rand() * 0.22;
+      pts.push({ x: Math.cos(t) * rx * wob, y: Math.sin(t) * ry * wob });
+    }
+    return pts;
+  }
+
+  function radioPoints(rx, ry) {
+    var pts = [];
+    var n = 36;
+    for (var i = 0; i < n; i++) {
+      var t = (i / n) * Math.PI * 2;
+      var jag = i % 3 === 0 ? 1 : 0.86;
+      pts.push({ x: Math.cos(t) * rx * jag, y: Math.sin(t) * ry * jag });
+    }
+    return pts;
+  }
+
+  function iciclePoints(rx, ry) {
+    var pts = [{ x: -rx, y: -ry * 0.15 }];
+    function quad(x0, y0, cx, cy, x1, y1) {
+      for (var i = 1; i <= 6; i++) {
+        var t = i / 6;
+        var u = 1 - t;
+        pts.push({
+          x: u * u * x0 + 2 * u * t * cx + t * t * x1,
+          y: u * u * y0 + 2 * u * t * cy + t * t * y1
+        });
+      }
+    }
+    quad(-rx, -ry * 0.15, -rx, -ry, 0, -ry);
+    quad(0, -ry, rx, -ry, rx, -ry * 0.15);
+    for (var i = 6; i >= 0; i--) {
+      pts.push({ x: -rx + (2 * rx) * (i / 6), y: i % 2 === 0 ? ry : ry * 0.12 });
+    }
+    return pts;
+  }
+
+  function roundRectPoints(x, y, w, h, radius) {
+    var r = Math.max(0, Math.min(radius, w / 2, h / 2));
+    if (r < 1) {
+      return [
+        { x: x, y: y },
+        { x: x + w, y: y },
+        { x: x + w, y: y + h },
+        { x: x, y: y + h }
+      ];
+    }
+    var pts = [];
+    function corner(cx, cy, a0, a1) {
+      var steps = 4;
+      for (var i = 0; i <= steps; i++) {
+        var t = a0 + (a1 - a0) * (i / steps);
+        pts.push({ x: cx + Math.cos(t) * r, y: cy + Math.sin(t) * r });
+      }
+    }
+    corner(x + w - r, y + r, -Math.PI / 2, 0);
+    corner(x + w - r, y + h - r, 0, Math.PI / 2);
+    corner(x + r, y + h - r, Math.PI / 2, Math.PI);
+    corner(x + r, y + r, Math.PI, Math.PI * 1.5);
+    return pts;
+  }
+
+  function ellipsePoints(rx, ry) {
+    var pts = [];
+    var n = 64;
+    for (var i = 0; i < n; i++) {
+      var t = (i / n) * Math.PI * 2;
+      pts.push({ x: Math.cos(t) * rx, y: Math.sin(t) * ry });
+    }
+    return pts;
+  }
+
+  function angDist(a, b) {
+    var d = a - b;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
+  function cwDist(from, to) {
+    var d = to - from;
+    while (d < 0) d += Math.PI * 2;
+    while (d >= Math.PI * 2) d -= Math.PI * 2;
+    return d;
+  }
+
+  function wedgePoints(a, tip, b, bend, normal) {
+    var mx = (a.x + b.x) / 2;
+    var my = (a.y + b.y) / 2;
+    var dirx = tip.x - mx;
+    var diry = tip.y - my;
+    var len = Math.hypot(dirx, diry) || 1;
+    var nx = normal ? normal.x : -diry / len;
+    var ny = normal ? normal.y : dirx / len;
+    var amount = Math.max(-len * 0.28, Math.min(len * 0.28, bend || 0));
+    if (!amount) return [tip, b];
+    var steps = 8;
+    function side(from) {
+      var pts = [];
+      for (var i = 1; i <= steps; i++) {
+        var t = i / steps;
+        var bulge = Math.sin(Math.PI * t) * amount;
+        pts.push({
+          x: mx + (tip.x - mx) * t + nx * bulge + (from.x - mx) * (1 - t),
+          y: my + (tip.y - my) * t + ny * bulge + (from.y - my) * (1 - t)
+        });
+      }
+      return pts;
+    }
+    var back = side(b);
+    back.reverse();
+    back.shift();
+    return side(a).concat(back).concat([b]);
+  }
+
+  function rayHit(points, angle) {
+    var dx = Math.cos(angle);
+    var dy = Math.sin(angle);
+    var best = null;
+    var bestT = 1e9;
+    var n = points.length;
+    for (var i = 0; i < n; i++) {
+      var a = points[i];
+      var b = points[(i + 1) % n];
+      var ex = b.x - a.x;
+      var ey = b.y - a.y;
+      var det = ex * dy - dx * ey;
+      if (Math.abs(det) < 1e-8) continue;
+      var t = (ex * a.y - ey * a.x) / det;
+      var s = (dx * a.y - dy * a.x) / det;
+      if (t > 1 && s >= -0.001 && s <= 1.001 && t < bestT) {
+        s = Math.max(0, Math.min(1, s));
+        bestT = t;
+        best = { index: i, s: s, x: a.x + ex * s, y: a.y + ey * s };
+      }
+    }
+    return best;
+  }
+
+  function boundaryChain(points, from, to) {
+    var n = points.length;
+    if (from.index === to.index && from.s <= to.s) {
+      return [{ x: from.x, y: from.y }, { x: to.x, y: to.y }];
+    }
+    var seq = [{ x: from.x, y: from.y }];
+    var i = (from.index + 1) % n;
+    var guard = 0;
+    while (guard++ <= n) {
+      if (i === to.index) {
+        seq.push(points[i]);
+        break;
+      }
+      seq.push(points[i]);
+      i = (i + 1) % n;
+    }
+    seq.push({ x: to.x, y: to.y });
+    return seq;
+  }
+
+  function chainSpread(seq, ang) {
+    if (seq.length <= 2) return 0;
+    var score = 0;
+    for (var i = 1; i < seq.length - 1; i++) score += Math.abs(angDist(Math.atan2(seq[i].y, seq[i].x), ang));
+    return score;
+  }
+
+  function spliceTails(points, letter) {
+    var tails = [];
+    if (letter.tail) tails.push({ x: letter.tail.dx, y: letter.tail.dy });
+    if (letter.tail2 && letter.type !== "thought" && letter.type !== "caption") {
+      tails.push({ x: letter.tail2.dx, y: letter.tail2.dy });
+    }
+    if (!tails.length || points.length < 4) return points;
+    var spread = letter.tailWidth == null ? 0.42 : Math.max(0.18, Math.min(0.9, Number(letter.tailWidth) / 100));
+    var ax = 0;
+    var ay = 0;
+    tails.forEach(function (tip) { ax += tip.x; ay += tip.y; });
+    var ang = Math.atan2(ay, ax);
+    var left = rayHit(points, ang - spread);
+    var right = rayHit(points, ang + spread);
+    if (!left || !right || (left.index === right.index && Math.abs(left.s - right.s) < 0.002)) return points;
+    var forward = boundaryChain(points, left, right);
+    var backward = boundaryChain(points, right, left);
+    var mouth = chainSpread(forward, ang) <= chainSpread(backward, ang) ? forward : backward;
+    var keep = mouth === forward ? backward : forward;
+    var baseA = mouth[0];
+    var baseB = mouth[mouth.length - 1];
+    var mid = { x: (baseA.x + baseB.x) / 2, y: (baseA.y + baseB.y) / 2 };
+    var bend = Number(letter.tailCurve) || 0;
+    var ordered = tails.slice();
+    if (ordered.length > 1) {
+      var aA = Math.atan2(baseA.y, baseA.x);
+      ordered.sort(function (p, q) {
+        return cwDist(aA, Math.atan2(p.y, p.x)) - cwDist(aA, Math.atan2(q.y, q.x));
+      });
+    }
+    var normal = { x: -Math.sin(ang), y: Math.cos(ang) };
+    var extra = ordered.length === 1
+      ? wedgePoints(baseA, ordered[0], baseB, bend, normal)
+      : wedgePoints(baseA, ordered[0], mid, bend, normal).concat(wedgePoints(mid, ordered[1], baseB, bend, normal));
+    var out = keep.slice();
+    extra.forEach(function (pt) { out.push(pt); });
+    return out;
+  }
+
+  function tracePoints(ctx, points) {
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (var i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
     ctx.closePath();
   }
 
@@ -861,7 +1014,13 @@
     var ty = letter.tail ? letter.tail.dy : letter.h;
     var spread = balloonSpread(letter);
     var curve = Number(letter.tailCurve) || 0;
-    var integrated = shape === "" || shape === "oval" || shape === "whisper" || shape === "round";
+    var ellipse = shape === "" || shape === "oval" || shape === "whisper" || shape === "round";
+    if (ellipse && letter.tail2 && letter.type !== "thought") {
+      var er = shape === "round" ? Math.min(rx, ry) : rx;
+      var ery = shape === "round" ? er : ry;
+      tracePoints(ctx, spliceTails(ellipsePoints(er, ery), letter));
+      return { dashed: shape === "whisper", spike: false };
+    }
     if (shape === "round") {
       var r = Math.min(rx, ry);
       if (letter.tail) traceBalloon(ctx, 0, 0, r, r, tx, ty, spread, curve);
@@ -871,37 +1030,18 @@
       }
       return { dashed: false, spike: false };
     }
-    if (shape === "rect") traceRoundRect(ctx, -rx, -ry, letter.w, letter.h, 2);
-    else if (shape === "roundrect") traceRoundRect(ctx, -rx, -ry, letter.w, letter.h, 22);
-    else if (shape === "burst") traceBurst(ctx, rx, ry);
-    else if (shape === "wobble") traceWobble(ctx, rx, ry, hashSeed(letter.id));
-    else if (shape === "radio") traceRadio(ctx, rx, ry);
-    else if (shape === "icicle") traceIcicle(ctx, rx, ry);
-    else {
-      traceBalloon(ctx, 0, 0, rx, ry, tx, ty, spread, curve);
-      integrated = true;
+    if (shape === "rect" || shape === "roundrect" || shape === "burst" || shape === "wobble" || shape === "radio" || shape === "icicle") {
+      var body = shape === "rect" ? roundRectPoints(-rx, -ry, letter.w, letter.h, 2)
+        : shape === "roundrect" ? roundRectPoints(-rx, -ry, letter.w, letter.h, 22)
+        : shape === "burst" ? burstPoints(rx, ry)
+        : shape === "wobble" ? wobblePoints(rx, ry, hashSeed(letter.id))
+        : shape === "radio" ? radioPoints(rx, ry)
+        : iciclePoints(rx, ry);
+      tracePoints(ctx, letter.type === "thought" ? body : spliceTails(body, letter));
+      return { dashed: false, spike: false, circles: letter.type === "thought" };
     }
-    return {
-      dashed: shape === "whisper",
-      spike: !integrated && !!letter.tail && letter.type !== "thought",
-      circles: letter.type === "thought" || shape === "cloud"
-    };
-  }
-
-  function paintSpike(ctx, letter, tail) {
-    traceTailSpike(ctx, letter, tail);
-    var alpha = letter.shapeAlpha == null ? 1 : Math.max(0, Math.min(100, Number(letter.shapeAlpha))) / 100;
-    ctx.save();
-    ctx.globalAlpha *= alpha;
-    ctx.fillStyle = letter.shapeFill || "#ffffff";
-    ctx.fill();
-    ctx.restore();
-    if ((letter.shapeStrokeWidth || 0) > 0) {
-      ctx.lineWidth = letter.shapeStrokeWidth;
-      ctx.strokeStyle = letter.shapeStroke || "#161616";
-      ctx.lineJoin = "round";
-      ctx.stroke();
-    }
+    traceBalloon(ctx, 0, 0, rx, ry, tx, ty, spread, curve);
+    return { dashed: shape === "whisper", spike: false, circles: letter.type === "thought" || shape === "cloud" };
   }
 
   function paintShape(ctx, letter, page) {
@@ -914,17 +1054,6 @@
       ctx.fillStyle = letter.shadowColor || "#222222";
       ctx.fill();
       ctx.restore();
-      if (meta.spike && letter.tail) {
-        [letter.tail, letter.tail2].forEach(function (tail) {
-          if (!tail) return;
-          ctx.save();
-          ctx.translate(letter.shadowDx == null ? 8 : Number(letter.shadowDx) || 0, letter.shadowDy == null ? 8 : Number(letter.shadowDy) || 0);
-          traceTailSpike(ctx, letter, tail);
-          ctx.fillStyle = letter.shadowColor || "#222222";
-          ctx.fill();
-          ctx.restore();
-        });
-      }
     }
     trace();
     ctx.save();
@@ -952,8 +1081,6 @@
       ctx.restore();
     }
     if (meta.sticky) drawDogear(ctx, letter);
-    if (meta.spike && letter.tail) paintSpike(ctx, letter, letter.tail);
-    if (letter.tail2 && !meta.circles && letter.type !== "caption") paintSpike(ctx, letter, letter.tail2);
     return meta;
   }
 
@@ -1001,6 +1128,8 @@
         ctx.clip();
         drawText(ctx, letter, maxW, page);
         ctx.restore();
+      } else if (letter.shape === "burst") {
+        drawText(ctx, letter, Math.min(maxW, letter.w * 0.46), page, letter.h * 0.42);
       } else {
         drawText(ctx, letter, maxW, page);
       }
