@@ -392,8 +392,47 @@ label .deg input { width: 5.5rem; }
 #tipbar .tip-k { color: var(--accent); font-weight: 700; }
 #tip-text { flex: 1; min-width: 0; }
 #tipbar button { padding: 2px 8px; font-size: 12px; }
-.styles-block { margin-top: 12px; }
-.styles-block summary {
+#selection-fold { margin-top: 14px; border-top: 1px solid var(--line); }
+#selection-fold > summary {
+  cursor: pointer;
+  margin: 16px 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+#selection-fold.flash { animation: selection-flash 1.1s ease; }
+@keyframes selection-flash {
+  0% { background: rgba(226, 162, 58, 0.28); }
+  100% { background: transparent; }
+}
+#style-popover {
+  position: fixed;
+  z-index: 24;
+  width: min(300px, calc(100vw - 16px));
+  max-height: min(70vh, 640px);
+  overflow: auto;
+  padding: 12px;
+  background: var(--rail);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+#style-popover.sheet {
+  left: 8px;
+  right: 8px;
+  width: auto;
+  max-height: 42vh;
+}
+.style-pop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.style-pop-head strong { font-size: 14px; }
+.style-pop-head button { margin-left: auto; }
+#style-popover label, #style-popover .field { display: grid; gap: 4px; margin: 0 0 10px; font-size: 13px; }
+#style-popover input, #style-popover textarea { -webkit-user-select: text; user-select: text; }
+.styles-block, .bubble-style { margin-top: 12px; }
+.bubble-style { border-top: 1px solid var(--line); padding-top: 8px; }
+.styles-block summary, .bubble-style summary {
   cursor: pointer;
   font-size: 11px;
   letter-spacing: 0.12em;
@@ -401,7 +440,9 @@ label .deg input { width: 5.5rem; }
   color: var(--muted);
   font-weight: 700;
 }
-.style-save, .style-row { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+.style-save, .style-row, .bubble-actions { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+.bubble-actions { flex-wrap: wrap; }
+.bubble-style .check { margin-top: 6px; }
 .style-save input, .style-row input { flex: 1; min-width: 0; }
 .style-row .style-apply { flex: 1; text-align: left; }
 .style-row .mini { flex: 0 0 auto; padding: 4px 7px; }

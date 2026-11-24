@@ -3,10 +3,10 @@
   "use strict";
   var G = window.ComicStudioGeometry;
 
-  function fontString(letter) {
+  function fontString(letter, size) {
     var style = letter.fontStyle === "italic" ? "italic" : "normal";
     var weight = letter.fontWeight || 400;
-    return style + " " + weight + " " + letter.fontSize + "px \"" + letter.font + "\"";
+    return style + " " + weight + " " + (size == null ? letter.fontSize : size) + "px \"" + letter.font + "\"";
   }
 
   function wrapLines(ctx, text, maxWidth) {
@@ -361,25 +361,38 @@
     return dx * dx + dy * dy <= 1;
   }
 
-  function traceBalloon(ctx, cx, cy, rx, ry, tx, ty) {
+  function traceBalloon(ctx, cx, cy, rx, ry, tx, ty, spread, curve) {
     rx = Math.max(rx, 1);
     ry = Math.max(ry, 1);
+    if (spread == null) spread = 0.42;
     if (inEllipse(cx, cy, rx, ry, tx, ty)) {
       ctx.beginPath();
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
       return;
     }
     var t = Math.atan2((ty - cy) / ry, (tx - cx) / rx);
-    var spread = 0.42;
+    var p1x = cx + Math.cos(t + spread) * rx;
+    var p1y = cy + Math.sin(t + spread) * ry;
+    var p2x = cx + Math.cos(t - spread) * rx;
+    var p2y = cy + Math.sin(t - spread) * ry;
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, t + spread, t - spread, false);
-    ctx.lineTo(tx, ty);
+    if (!curve) {
+      ctx.lineTo(tx, ty);
+    } else {
+      var len = Math.hypot(tx - cx, ty - cy) || 1;
+      var amount = Math.max(-len * 0.35, Math.min(len * 0.35, curve));
+      var nx = -(ty - cy) / len;
+      var ny = (tx - cx) / len;
+      ctx.quadraticCurveTo((p2x + tx) / 2 + nx * amount, (p2y + ty) / 2 + ny * amount, tx, ty);
+      ctx.quadraticCurveTo((p1x + tx) / 2 + nx * amount, (p1y + ty) / 2 + ny * amount, p1x, p1y);
+    }
     ctx.closePath();
   }
 
-  function traceCloud(ctx, cx, cy, rx, ry) {
-    var n = 16;
-    var amp = Math.min(rx, ry) * 0.14;
+  function traceCloud(ctx, cx, cy, rx, ry, bumps, puff) {
+    var n = bumps == null ? 16 : bumps;
+    var amp = Math.min(rx, ry) * (puff == null ? 0.14 : puff);
     ctx.beginPath();
     for (var i = 0; i < n; i++) {
       var t0 = (i / n) * Math.PI * 2;
@@ -533,10 +546,34 @@
     }
   }
 
-  function drawText(ctx, letter, maxWidth, page) {
+  function fittedSize(ctx, letter, maxWidth, fitHeight) {
+    var lead = letter.leading == null ? 1.15 : Math.max(80, Math.min(220, Number(letter.leading))) / 100;
+    var limit = letter.h * 0.78;
+    if (fitHeight != null) limit = Math.min(limit, fitHeight);
+    var size = letter.fontSize;
+    var guard = 0;
+    while (size > 8 && guard < 24) {
+      ctx.font = fontString(letter, size);
+      var lines = wrapLines(ctx, letter.text, Math.max(8, maxWidth));
+      var tooTall = lines.length * size * lead > limit;
+      var tooWide = false;
+      for (var i = 0; i < lines.length; i++) {
+        if (ctx.measureText(lines[i]).width > maxWidth + 0.5) tooWide = true;
+      }
+      if (!tooTall && !tooWide) return size;
+      size = Math.max(8, Math.floor(size * 0.92));
+      guard++;
+    }
+    return Math.max(8, size);
+  }
+
+  function drawText(ctx, letter, maxWidth, page, fitHeight) {
     ctx.save();
-    ctx.font = fontString(letter);
-    ctx.textAlign = "center";
+    var shrink = letter.autoFit || fitHeight != null;
+    var drawSize = shrink ? fittedSize(ctx, letter, maxWidth, fitHeight) : letter.fontSize;
+    ctx.font = shrink ? fontString(letter, drawSize) : fontString(letter);
+    var align = letter.align === "left" || letter.align === "right" ? letter.align : "center";
+    ctx.textAlign = align;
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
     ctx.miterLimit = 2;
@@ -544,22 +581,25 @@
     var shearY = (Number(letter.skewY) || 0) / Math.max(letter.w, 1);
     if (shearX || shearY) ctx.transform(1, shearY, shearX, 1, 0, 0);
     var lines = wrapLines(ctx, letter.text, Math.max(8, maxWidth));
-    var lh = letter.fontSize * 1.15;
+    var lead = letter.leading == null ? 1.15 : Math.max(80, Math.min(220, Number(letter.leading))) / 100;
+    var lh = letter.leading == null && !shrink ? letter.fontSize * 1.15 : drawSize * lead;
     var y = -((lines.length - 1) * lh) / 2;
+    var xOff = align === "left" ? -maxWidth / 2 : align === "right" ? maxWidth / 2 : 0;
     var warped = (letter.warp === "arc" || letter.warp === "wave" || letter.warp === "bulge") && Number(letter.warpAmount);
     var persp = Number(letter.perspective);
     for (var i = 0; i < lines.length; i++) {
       if (warped || persp) drawWarpedLine(ctx, letter, lines[i], y, page);
-      else paintGlyph(ctx, letter, lines[i], 0, y, 0, 1, page);
+      else paintGlyph(ctx, letter, lines[i], xOff, y, 0, 1, page);
       y += lh;
     }
     ctx.restore();
   }
 
-  function drawTrail(ctx, letter, cx, cy) {
-    if (!letter.tail) return;
-    var tx = cx + letter.tail.dx;
-    var ty = cy + letter.tail.dy;
+  function drawTrail(ctx, letter, cx, cy, scale, tail) {
+    var tip = tail || letter.tail;
+    if (!tip) return;
+    var tx = cx + tip.dx;
+    var ty = cy + tip.dy;
     var rx = letter.w / 2;
     var ry = letter.h / 2;
     var ts = [0.58, 0.76, 0.92];
@@ -567,6 +607,7 @@
     ctx.fillStyle = letter.shapeFill;
     ctx.strokeStyle = letter.shapeStroke;
     ctx.lineWidth = Math.max(2, letter.shapeStrokeWidth * 0.65);
+    var k = scale == null ? 1 : scale;
     for (var i = 0; i < 3; i++) {
       var x = cx + (tx - cx) * ts[i];
       var y = cy + (ty - cy) * ts[i];
@@ -574,13 +615,533 @@
       var dy = (y - cy) / Math.max(ry, 1);
       if (dx * dx + dy * dy < 0.92) continue;
       ctx.beginPath();
-      ctx.arc(x, y, Math.max(3, Math.min(rx, ry) * rs[i]), 0, Math.PI * 2);
+      ctx.arc(x, y, Math.max(3, Math.min(rx, ry) * rs[i] * k), 0, Math.PI * 2);
       ctx.fill();
       if (letter.shapeStrokeWidth > 0) ctx.stroke();
     }
   }
 
+  function hashSeed(id) {
+    var s = String(id || "x");
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function mulberry(seed) {
+    var a = seed || 1;
+    return function () {
+      a |= 0;
+      a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function classicLetter(letter) {
+    if (!letter || letter.type === "sfx") return true;
+    if (letter.shape || letter.captionStyle || letter.shadow || letter.tail2) return false;
+    if (letter.shapeAlpha != null && Number(letter.shapeAlpha) < 99.5) return false;
+    if (letter.tailCurve || letter.tailWidth != null) return false;
+    if (letter.puffCount != null || letter.puffSize != null) return false;
+    if (letter.texture && letter.texture !== "none") return false;
+    if (letter.slantCorners) return false;
+    return true;
+  }
+
+  function traceTorn(ctx, w, h, seed) {
+    var rand = mulberry(seed);
+    var x0 = -w / 2;
+    var y0 = -h / 2;
+    var steps = 8;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    var i;
+    for (i = 1; i <= steps; i++) {
+      ctx.lineTo(x0 + (w * i) / steps, y0 + (i === steps ? 0 : (rand() - 0.5) * h * 0.16));
+    }
+    for (i = 1; i <= steps; i++) {
+      ctx.lineTo(x0 + w + (i === steps ? 0 : (rand() - 0.5) * w * 0.08), y0 + (h * i) / steps);
+    }
+    for (i = steps - 1; i >= 0; i--) {
+      ctx.lineTo(x0 + (w * i) / steps, y0 + h + (i === 0 ? 0 : (rand() - 0.5) * h * 0.16));
+    }
+    ctx.closePath();
+  }
+
+  function traceChamfer(ctx, w, h) {
+    var x = -w / 2;
+    var y = -h / 2;
+    var c = Math.min(18, w / 3, h / 3);
+    ctx.beginPath();
+    ctx.moveTo(x + c, y);
+    ctx.lineTo(x + w - c, y);
+    ctx.lineTo(x + w, y + c);
+    ctx.lineTo(x + w, y + h - c);
+    ctx.lineTo(x + w - c, y + h);
+    ctx.lineTo(x + c, y + h);
+    ctx.lineTo(x, y + h - c);
+    ctx.lineTo(x, y + c);
+    ctx.closePath();
+  }
+
+  function traceBar(ctx, letter, page) {
+    var cx = letter.x + letter.w / 2;
+    ctx.beginPath();
+    ctx.rect(-cx, -letter.h / 2, page.width, letter.h);
+  }
+
+  function burstPoints(rx, ry) {
+    var pts = [];
+    var n = 16;
+    for (var i = 0; i < n; i++) {
+      var t = (i / n) * Math.PI * 2 - Math.PI / 2;
+      var inner = i % 2 === 1;
+      pts.push({ x: Math.cos(t) * rx * (inner ? 0.68 : 1), y: Math.sin(t) * ry * (inner ? 0.68 : 1) });
+    }
+    return pts;
+  }
+
+  function wobblePoints(rx, ry, seed) {
+    var rand = mulberry(seed);
+    var pts = [];
+    var n = 28;
+    for (var i = 0; i < n; i++) {
+      var t = (i / n) * Math.PI * 2;
+      var wob = 0.84 + rand() * 0.22;
+      pts.push({ x: Math.cos(t) * rx * wob, y: Math.sin(t) * ry * wob });
+    }
+    return pts;
+  }
+
+  function radioPoints(rx, ry) {
+    var pts = [];
+    var n = 36;
+    for (var i = 0; i < n; i++) {
+      var t = (i / n) * Math.PI * 2;
+      var jag = i % 3 === 0 ? 1 : 0.86;
+      pts.push({ x: Math.cos(t) * rx * jag, y: Math.sin(t) * ry * jag });
+    }
+    return pts;
+  }
+
+  function iciclePoints(rx, ry) {
+    var pts = [{ x: -rx, y: -ry * 0.15 }];
+    function quad(x0, y0, cx, cy, x1, y1) {
+      for (var i = 1; i <= 6; i++) {
+        var t = i / 6;
+        var u = 1 - t;
+        pts.push({
+          x: u * u * x0 + 2 * u * t * cx + t * t * x1,
+          y: u * u * y0 + 2 * u * t * cy + t * t * y1
+        });
+      }
+    }
+    quad(-rx, -ry * 0.15, -rx, -ry, 0, -ry);
+    quad(0, -ry, rx, -ry, rx, -ry * 0.15);
+    for (var i = 6; i >= 0; i--) {
+      pts.push({ x: -rx + (2 * rx) * (i / 6), y: i % 2 === 0 ? ry : ry * 0.12 });
+    }
+    return pts;
+  }
+
+  function roundRectPoints(x, y, w, h, radius) {
+    var r = Math.max(0, Math.min(radius, w / 2, h / 2));
+    if (r < 1) {
+      return [
+        { x: x, y: y },
+        { x: x + w, y: y },
+        { x: x + w, y: y + h },
+        { x: x, y: y + h }
+      ];
+    }
+    var pts = [];
+    function corner(cx, cy, a0, a1) {
+      var steps = 4;
+      for (var i = 0; i <= steps; i++) {
+        var t = a0 + (a1 - a0) * (i / steps);
+        pts.push({ x: cx + Math.cos(t) * r, y: cy + Math.sin(t) * r });
+      }
+    }
+    corner(x + w - r, y + r, -Math.PI / 2, 0);
+    corner(x + w - r, y + h - r, 0, Math.PI / 2);
+    corner(x + r, y + h - r, Math.PI / 2, Math.PI);
+    corner(x + r, y + r, Math.PI, Math.PI * 1.5);
+    return pts;
+  }
+
+  function ellipsePoints(rx, ry) {
+    var pts = [];
+    var n = 64;
+    for (var i = 0; i < n; i++) {
+      var t = (i / n) * Math.PI * 2;
+      pts.push({ x: Math.cos(t) * rx, y: Math.sin(t) * ry });
+    }
+    return pts;
+  }
+
+  function angDist(a, b) {
+    var d = a - b;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
+  function cwDist(from, to) {
+    var d = to - from;
+    while (d < 0) d += Math.PI * 2;
+    while (d >= Math.PI * 2) d -= Math.PI * 2;
+    return d;
+  }
+
+  function wedgePoints(a, tip, b, bend, normal) {
+    var mx = (a.x + b.x) / 2;
+    var my = (a.y + b.y) / 2;
+    var dirx = tip.x - mx;
+    var diry = tip.y - my;
+    var len = Math.hypot(dirx, diry) || 1;
+    var nx = normal ? normal.x : -diry / len;
+    var ny = normal ? normal.y : dirx / len;
+    var amount = Math.max(-len * 0.28, Math.min(len * 0.28, bend || 0));
+    if (!amount) return [tip, b];
+    var steps = 8;
+    function side(from) {
+      var pts = [];
+      for (var i = 1; i <= steps; i++) {
+        var t = i / steps;
+        var bulge = Math.sin(Math.PI * t) * amount;
+        pts.push({
+          x: mx + (tip.x - mx) * t + nx * bulge + (from.x - mx) * (1 - t),
+          y: my + (tip.y - my) * t + ny * bulge + (from.y - my) * (1 - t)
+        });
+      }
+      return pts;
+    }
+    var back = side(b);
+    back.reverse();
+    back.shift();
+    return side(a).concat(back).concat([b]);
+  }
+
+  function rayHit(points, angle) {
+    var dx = Math.cos(angle);
+    var dy = Math.sin(angle);
+    var best = null;
+    var bestT = 1e9;
+    var n = points.length;
+    for (var i = 0; i < n; i++) {
+      var a = points[i];
+      var b = points[(i + 1) % n];
+      var ex = b.x - a.x;
+      var ey = b.y - a.y;
+      var det = ex * dy - dx * ey;
+      if (Math.abs(det) < 1e-8) continue;
+      var t = (ex * a.y - ey * a.x) / det;
+      var s = (dx * a.y - dy * a.x) / det;
+      if (t > 1 && s >= -0.001 && s <= 1.001 && t < bestT) {
+        s = Math.max(0, Math.min(1, s));
+        bestT = t;
+        best = { index: i, s: s, x: a.x + ex * s, y: a.y + ey * s };
+      }
+    }
+    return best;
+  }
+
+  function boundaryChain(points, from, to) {
+    var n = points.length;
+    if (from.index === to.index && from.s <= to.s) {
+      return [{ x: from.x, y: from.y }, { x: to.x, y: to.y }];
+    }
+    var seq = [{ x: from.x, y: from.y }];
+    var i = (from.index + 1) % n;
+    var guard = 0;
+    while (guard++ <= n) {
+      if (i === to.index) {
+        seq.push(points[i]);
+        break;
+      }
+      seq.push(points[i]);
+      i = (i + 1) % n;
+    }
+    seq.push({ x: to.x, y: to.y });
+    return seq;
+  }
+
+  function chainSpread(seq, ang) {
+    if (seq.length <= 2) return 0;
+    var score = 0;
+    for (var i = 1; i < seq.length - 1; i++) score += Math.abs(angDist(Math.atan2(seq[i].y, seq[i].x), ang));
+    return score;
+  }
+
+  function spliceTails(points, letter) {
+    var tails = [];
+    if (letter.tail) tails.push({ x: letter.tail.dx, y: letter.tail.dy });
+    if (letter.tail2 && letter.type !== "thought" && letter.type !== "caption") {
+      tails.push({ x: letter.tail2.dx, y: letter.tail2.dy });
+    }
+    if (!tails.length || points.length < 4) return points;
+    var spread = letter.tailWidth == null ? 0.42 : Math.max(0.18, Math.min(0.9, Number(letter.tailWidth) / 100));
+    var ax = 0;
+    var ay = 0;
+    tails.forEach(function (tip) { ax += tip.x; ay += tip.y; });
+    var ang = Math.atan2(ay, ax);
+    var left = rayHit(points, ang - spread);
+    var right = rayHit(points, ang + spread);
+    if (!left || !right || (left.index === right.index && Math.abs(left.s - right.s) < 0.002)) return points;
+    var forward = boundaryChain(points, left, right);
+    var backward = boundaryChain(points, right, left);
+    var mouth = chainSpread(forward, ang) <= chainSpread(backward, ang) ? forward : backward;
+    var keep = mouth === forward ? backward : forward;
+    var baseA = mouth[0];
+    var baseB = mouth[mouth.length - 1];
+    var mid = { x: (baseA.x + baseB.x) / 2, y: (baseA.y + baseB.y) / 2 };
+    var bend = Number(letter.tailCurve) || 0;
+    var ordered = tails.slice();
+    if (ordered.length > 1) {
+      var aA = Math.atan2(baseA.y, baseA.x);
+      ordered.sort(function (p, q) {
+        return cwDist(aA, Math.atan2(p.y, p.x)) - cwDist(aA, Math.atan2(q.y, q.x));
+      });
+    }
+    var normal = { x: -Math.sin(ang), y: Math.cos(ang) };
+    var extra = ordered.length === 1
+      ? wedgePoints(baseA, ordered[0], baseB, bend, normal)
+      : wedgePoints(baseA, ordered[0], mid, bend, normal).concat(wedgePoints(mid, ordered[1], baseB, bend, normal));
+    var out = keep.slice();
+    extra.forEach(function (pt) { out.push(pt); });
+    return out;
+  }
+
+  function tracePoints(ctx, points) {
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (var i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+    ctx.closePath();
+  }
+
+  function paintTexture(ctx, letter) {
+    var rx = letter.w / 2 + 4;
+    var ry = letter.h / 2 + 4;
+    if (letter.texture === "halftone") {
+      var pitch = 8;
+      ctx.fillStyle = "rgba(0,0,0,0.38)";
+      for (var y = -ry; y <= ry; y += pitch) {
+        for (var x = -rx; x <= rx; x += pitch) {
+          ctx.beginPath();
+          ctx.arc(x, y, 1.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      return;
+    }
+    var rand = mulberry(hashSeed(letter.id) ^ 0x9e3779b9);
+    ctx.fillStyle = "rgba(92, 64, 28, 0.1)";
+    for (var i = 0; i < 70; i++) {
+      ctx.fillRect((rand() - 0.5) * letter.w, (rand() - 0.5) * letter.h, 1 + rand() * 3, 1 + rand() * 2);
+    }
+    ctx.strokeStyle = "rgba(120, 84, 40, 0.18)";
+    ctx.lineWidth = 1;
+    for (var n = 0; n < 5; n++) {
+      ctx.beginPath();
+      ctx.moveTo(-rx, (rand() - 0.5) * letter.h);
+      ctx.lineTo(rx, (rand() - 0.5) * letter.h);
+      ctx.stroke();
+    }
+  }
+
+  function drawDogear(ctx, letter) {
+    var fold = Math.max(10, Math.min(22, Math.min(letter.w * 0.16, letter.h * 0.28)));
+    var x = letter.w / 2;
+    var y = -letter.h / 2;
+    ctx.beginPath();
+    ctx.moveTo(x - fold, y);
+    ctx.lineTo(x, y + fold);
+    ctx.lineTo(x - fold, y + fold);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(0,0,0,0.16)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x - fold, y);
+    ctx.lineTo(x - fold, y + fold);
+    ctx.lineTo(x, y + fold);
+    ctx.strokeStyle = letter.shapeStroke || "#161616";
+    ctx.lineWidth = Math.max(1, (letter.shapeStrokeWidth || 4) * 0.5);
+    ctx.stroke();
+  }
+
+  function balloonSpread(letter) {
+    return letter.tailWidth == null ? undefined : Math.max(0.12, Math.min(1.15, Number(letter.tailWidth) / 100));
+  }
+
+  function traceLetterShape(ctx, letter, page) {
+    var rx = letter.w / 2;
+    var ry = letter.h / 2;
+    var shape = letter.shape || "";
+    if (letter.type === "caption") {
+      var style = letter.captionStyle || "box";
+      if (style === "bar") {
+        traceBar(ctx, letter, page);
+        return { spike: false };
+      }
+      if (style === "torn") {
+        traceTorn(ctx, letter.w, letter.h, hashSeed(letter.id));
+        return { spike: false };
+      }
+      if (style === "sticky") {
+        traceRoundRect(ctx, -rx, -ry, letter.w, letter.h, 3);
+        return { spike: false, sticky: true };
+      }
+      if (letter.slantCorners) {
+        traceChamfer(ctx, letter.w, letter.h);
+        return { spike: false };
+      }
+      traceRoundRect(ctx, -rx, -ry, letter.w, letter.h, 10);
+      return { spike: false };
+    }
+    var cloud = letter.type === "thought" || shape === "cloud";
+    if (cloud && (!shape || shape === "cloud")) {
+      var bumps = letter.puffCount == null ? undefined : Math.max(6, Math.min(32, letter.puffCount | 0));
+      var puff = letter.puffSize == null ? undefined : Math.max(0.02, Math.min(0.4, Number(letter.puffSize) / 100));
+      traceCloud(ctx, 0, 0, rx, ry, bumps, puff);
+      return { spike: false, circles: true };
+    }
+    var tx = letter.tail ? letter.tail.dx : 0;
+    var ty = letter.tail ? letter.tail.dy : letter.h;
+    var spread = balloonSpread(letter);
+    var curve = Number(letter.tailCurve) || 0;
+    var ellipse = shape === "" || shape === "oval" || shape === "whisper" || shape === "round";
+    if (ellipse && letter.tail2 && letter.type !== "thought") {
+      var er = shape === "round" ? Math.min(rx, ry) : rx;
+      var ery = shape === "round" ? er : ry;
+      tracePoints(ctx, spliceTails(ellipsePoints(er, ery), letter));
+      return { dashed: shape === "whisper", spike: false };
+    }
+    if (shape === "round") {
+      var r = Math.min(rx, ry);
+      if (letter.tail) traceBalloon(ctx, 0, 0, r, r, tx, ty, spread, curve);
+      else {
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+      }
+      return { dashed: false, spike: false };
+    }
+    if (shape === "rect" || shape === "roundrect" || shape === "burst" || shape === "wobble" || shape === "radio" || shape === "icicle") {
+      var body = shape === "rect" ? roundRectPoints(-rx, -ry, letter.w, letter.h, 2)
+        : shape === "roundrect" ? roundRectPoints(-rx, -ry, letter.w, letter.h, 22)
+        : shape === "burst" ? burstPoints(rx, ry)
+        : shape === "wobble" ? wobblePoints(rx, ry, hashSeed(letter.id))
+        : shape === "radio" ? radioPoints(rx, ry)
+        : iciclePoints(rx, ry);
+      tracePoints(ctx, letter.type === "thought" ? body : spliceTails(body, letter));
+      return { dashed: false, spike: false, circles: letter.type === "thought" };
+    }
+    traceBalloon(ctx, 0, 0, rx, ry, tx, ty, spread, curve);
+    return { dashed: shape === "whisper", spike: false, circles: letter.type === "thought" || shape === "cloud" };
+  }
+
+  function paintShape(ctx, letter, page) {
+    var meta = {};
+    function trace() { meta = traceLetterShape(ctx, letter, page); }
+    if (letter.shadow) {
+      ctx.save();
+      ctx.translate(letter.shadowDx == null ? 8 : Number(letter.shadowDx) || 0, letter.shadowDy == null ? 8 : Number(letter.shadowDy) || 0);
+      trace();
+      ctx.fillStyle = letter.shadowColor || "#222222";
+      ctx.fill();
+      ctx.restore();
+    }
+    trace();
+    ctx.save();
+    var alpha = letter.shapeAlpha == null ? 1 : Math.max(0, Math.min(100, Number(letter.shapeAlpha))) / 100;
+    ctx.globalAlpha *= alpha;
+    ctx.fillStyle = letter.shapeFill || "#ffffff";
+    ctx.fill();
+    if (letter.texture === "parchment" || letter.texture === "halftone") {
+      ctx.save();
+      trace();
+      ctx.clip();
+      paintTexture(ctx, letter);
+      ctx.restore();
+    }
+    ctx.restore();
+    trace();
+    if ((letter.shapeStrokeWidth || 0) > 0) {
+      ctx.save();
+      if (meta.dashed) ctx.setLineDash([8, 6]);
+      ctx.lineWidth = letter.shapeStrokeWidth;
+      ctx.strokeStyle = letter.shapeStroke || "#161616";
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (meta.sticky) drawDogear(ctx, letter);
+    return meta;
+  }
+
+  function drawStyledLetter(ctx, letter, hideText, page) {
+    var cx = letter.x + letter.w / 2;
+    var cy = letter.y + letter.h / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((letter.rotation || 0) * Math.PI / 180);
+    var meta = paintShape(ctx, letter, page);
+    if (meta.circles || letter.type === "thought") {
+      ctx.restore();
+      var scale = letter.puffSize == null && letter.tailWidth == null ? undefined : (letter.puffSize == null ? 1 : Math.max(0.45, Math.min(2.2, Number(letter.puffSize) / 14))) * (letter.tailWidth == null ? 1 : Math.max(0.45, Math.min(2.2, Number(letter.tailWidth) / 42)));
+      if (letter.shadow) {
+        var fill = letter.shapeFill;
+        var stroke = letter.shapeStroke;
+        letter.shapeFill = letter.shadowColor || "#222222";
+        letter.shapeStroke = letter.shadowColor || "#222222";
+        try {
+          ctx.save();
+          ctx.translate(letter.shadowDx == null ? 8 : Number(letter.shadowDx) || 0, letter.shadowDy == null ? 8 : Number(letter.shadowDy) || 0);
+          drawTrail(ctx, letter, cx, cy, scale);
+          if (letter.tail2) drawTrail(ctx, letter, cx, cy, scale, letter.tail2);
+          ctx.restore();
+        } finally {
+          letter.shapeFill = fill;
+          letter.shapeStroke = stroke;
+        }
+      }
+      drawTrail(ctx, letter, cx, cy, scale);
+      if (letter.tail2) drawTrail(ctx, letter, cx,cy, scale, letter.tail2);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((letter.rotation || 0) * Math.PI / 180);
+    }
+    if (!hideText) {
+      var pad = Math.max(4, (Number(letter.shapeStrokeWidth) || 0) * 0.5);
+      var maxW = letter.w * (letter.type === "thought" ? 0.62 : letter.type === "bubble" ? 0.72 : letter.type === "caption" ? 0.86 : 0.98);
+      if (letter.type === "caption") {
+        maxW = Math.max(8, letter.w - pad * 2);
+        ctx.save();
+        if (letter.captionStyle === "bar") traceBar(ctx, letter, page);
+        else if (letter.captionStyle === "torn") traceTorn(ctx, letter.w, letter.h, hashSeed(letter.id));
+        else traceRoundRect(ctx, -letter.w / 2 + pad, -letter.h / 2 + pad, Math.max(8, letter.w - pad * 2), Math.max(8, letter.h - pad * 2), letter.slantCorners ? 0 : 6);
+        ctx.clip();
+        drawText(ctx, letter, maxW, page);
+        ctx.restore();
+      } else if (letter.shape === "burst") {
+        drawText(ctx, letter, Math.min(maxW, letter.w * 0.46), page, letter.h * 0.42);
+      } else {
+        drawText(ctx, letter, maxW, page);
+      }
+    }
+    ctx.restore();
+  }
+
   function drawLetter(ctx, letter, hideText, page) {
+    if (!classicLetter(letter)) {
+      drawStyledLetter(ctx, letter, hideText, page);
+      return;
+    }
     var cx = letter.x + letter.w / 2;
     var cy = letter.y + letter.h / 2;
     ctx.save();
@@ -726,15 +1287,62 @@
     ctx.fillStyle = "#fff";
     ctx.fill();
     ctx.stroke();
-    if (letter.tail) {
-      var tip = { x: letter.x + letter.w / 2 + letter.tail.dx, y: letter.y + letter.h / 2 + letter.tail.dy };
+    function tailKnob(tail, fill) {
+      if (!tail) return;
+      var tip = { x: letter.x + letter.w / 2 + tail.dx, y: letter.y + letter.h / 2 + tail.dy };
       ctx.beginPath();
       ctx.arc(tip.x, tip.y, 6 * unit, 0, Math.PI * 2);
-      ctx.fillStyle = "#e2a23a";
+      ctx.fillStyle = fill;
       ctx.strokeStyle = "#241a09";
       ctx.fill();
       ctx.stroke();
     }
+    tailKnob(letter.tail, "#e2a23a");
+    tailKnob(letter.tail2, "#d45d9a");
+    ctx.restore();
+  }
+
+  function linkEdge(letter, other) {
+    var cx = letter.x + letter.w / 2;
+    var cy = letter.y + letter.h / 2;
+    var ox = other.x + other.w / 2;
+    var oy = other.y + other.h / 2;
+    var rot = (letter.rotation || 0) * Math.PI / 180;
+    var dx = ox - cx;
+    var dy = oy - cy;
+    var ang = Math.atan2(dy, dx) - rot;
+    var rx = Math.max(letter.w / 2, 1);
+    var ry = Math.max(letter.h / 2, 1);
+    var cos = Math.cos(ang);
+    var sin = Math.sin(ang);
+    var denom = Math.sqrt((cos * cos) / (rx * rx) + (sin * sin) / (ry * ry)) || 1;
+    var lx = cos / denom;
+    var ly = sin / denom;
+    return {
+      x: cx + lx * Math.cos(rot) - ly * Math.sin(rot),
+      y: cy + lx * Math.sin(rot) + ly * Math.cos(rot)
+    };
+  }
+
+  function drawLinks(ctx, letters) {
+    if (!letters || !letters.length) return;
+    var byId = {};
+    letters.forEach(function (letter) { if (letter && letter.id) byId[letter.id] = letter; });
+    ctx.save();
+    letters.forEach(function (letter) {
+      if (!letter || !letter.linkTo || letter.linkTo === letter.id) return;
+      var other = byId[letter.linkTo];
+      if (!other) return;
+      var a = linkEdge(letter, other);
+      var b = linkEdge(other, letter);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = letter.shapeStroke || "#161616";
+      ctx.lineWidth = Math.max(3, Number(letter.shapeStrokeWidth) || 4);
+      ctx.lineCap = "round";
+      ctx.stroke();
+    });
     ctx.restore();
   }
 
@@ -805,6 +1413,7 @@
         ctx.restore();
       }
     });
+    drawLinks(ctx, doc.letters);
     doc.letters.forEach(function (letter) {
       drawLetter(ctx, letter, opts.hideTextId === letter.id, page);
     });

@@ -146,8 +146,10 @@
         <input id="dots-strength" type="range" min="0" max="100" step="1" value="85">
       </label>
       <p class="hint">Color Ben-Day screen on the adjusted pictures. Dot size follows the tone. Lettering stays solid unless you turn on Halftone letters.</p>
-      <h2>Selection</h2>
-      <div id="sel-props"></div>
+      <details id="selection-fold">
+        <summary>Selection</summary>
+        <div id="sel-props"></div>
+      </details>
     </aside>
   </div>
   <div id="pages" aria-label="Pages">
@@ -188,6 +190,7 @@
     </div>
   </footer>
 </div>
+<div id="style-popover" hidden role="dialog" aria-label="Lettering style"></div>
 <textarea id="editor" aria-label="Lettering text" spellcheck="false"></textarea>
 <input id="file-image" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden>
 <input id="file-bank" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple hidden>
